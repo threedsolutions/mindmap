@@ -9,15 +9,44 @@
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  ::selection { background: #3a3a3a; color: #c8c8c8; }
+  /* ── Themes ── */
+  :root {
+    --bg:             #1e1e1e;
+    --text:           #c8c8c8;
+    --placeholder:    #555;
+    --border:         #3a3a3a;
+    --btn-bg:         #1e1e1e;
+    --drop-bg:        #2e2e2e;
+    --sel-bg:         #3a3a3a;
+    --overlay-bg:     rgba(30,30,30,0.92);
+    --progress-track: #333;
+    --del-color:      #444;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:             #ffffff;
+      --text:           #1e1e1e;
+      --placeholder:    #bbb;
+      --border:         #d0ceca;
+      --btn-bg:         #ffffff;
+      --drop-bg:        #e8e6e0;
+      --sel-bg:         #d0ceca;
+      --overlay-bg:     rgba(255,255,255,0.92);
+      --progress-track: #ddd;
+      --del-color:      #ccc;
+    }
+  }
+
+  ::selection { background: var(--sel-bg); color: var(--text); }
 
   body {
-    background: #1e1e1e;
+    background: var(--bg);
     font-family: 'JetBrains Mono', monospace;
     overflow: hidden;
     width: 100vw; height: 100vh;
     cursor: default;
     user-select: none;
+    transition: background 0.2s;
   }
 
   #canvas-wrap {
@@ -57,7 +86,7 @@
   .node-label {
     font-size: 13px;
     font-weight: 400;
-    color: #c8c8c8;
+    color: var(--text);
     letter-spacing: 0.01em;
     cursor: pointer;
     white-space: nowrap;
@@ -65,7 +94,7 @@
     border-radius: 2px;
     transition: background 0.1s;
   }
-  .node-label.placeholder { color: #555; cursor: text; }
+  .node-label.placeholder { color: var(--placeholder); cursor: text; }
   .node-label.placeholder::after {
     content: '';
     animation: dots 1.5s infinite;
@@ -83,8 +112,8 @@
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
     font-weight: 400;
-    color: #c8c8c8;
-    background: #1e1e1e;
+    color: var(--text);
+    background: transparent;
     border: none;
     outline: none;
     padding: 1px 4px;
@@ -101,8 +130,8 @@
     justify-content: center;
     width: 14px; height: 14px;
     border: none;
-    background: #1e1e1e;
-    color: #444;
+    background: transparent;
+    color: var(--del-color);
     font-size: 13px;
     cursor: pointer;
     margin-left: 1px; margin-right: 1px;
@@ -121,9 +150,9 @@
     z-index: 999;
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
-    color: #c8c8c8;
-    background: #1e1e1e;
-    border: 1px solid #3a3a3a;
+    color: var(--text);
+    background: var(--btn-bg);
+    border: 1px solid var(--border);
     padding: 2px 8px;
     border-radius: 2px;
     display: none;
@@ -131,10 +160,10 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.4);
   }
 
-  .node-el.drop-target .node-label { background: #2e2e2e; }
+  .node-el.drop-target .node-label { background: var(--drop-bg); }
 
   .map-line {
-    stroke: #c8c8c8;
+    stroke: var(--text);
     stroke-width: 1px;
     fill: none;
     stroke-linecap: square;
@@ -152,9 +181,9 @@
   .ctrl-btn {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
-    color: #c8c8c8;
-    background: #1e1e1e;
-    border: 1px solid #3a3a3a;
+    color: var(--text);
+    background: var(--btn-bg);
+    border: 1px solid var(--border);
     padding: 5px 12px;
     cursor: pointer;
     border-radius: 2px;
@@ -162,7 +191,7 @@
     transition: border-color 0.1s, color 0.1s, opacity 0.15s;
     height: 28px;
   }
-  .ctrl-btn:hover { border-color: #c8c8c8; color: #c8c8c8; }
+  .ctrl-btn:hover { border-color: var(--text); color: var(--text); }
   .ctrl-btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
 
   #btn-start-over { color: #c87; border-color: #5a3a3a; }
@@ -173,7 +202,7 @@
     bottom: 24px; left: 24px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
-    color: #c8c8c8;
+    color: var(--text);
     z-index: 100;
     line-height: 1.9;
     pointer-events: none;
@@ -186,7 +215,7 @@
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(30,30,30,0.92);
+    background: var(--overlay-bg);
     z-index: 200;
     flex-direction: column;
     align-items: center;
@@ -194,13 +223,13 @@
     gap: 16px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
-    color: #666;
+    color: var(--placeholder);
     letter-spacing: 0.04em;
   }
   #export-overlay.visible { display: flex; }
   #export-progress-wrap {
     width: 180px; height: 2px;
-    background: #333; border-radius: 1px; overflow: hidden;
+    background: var(--progress-track); border-radius: 1px; overflow: hidden;
   }
   #export-progress-bar {
     height: 100%; width: 0%;
@@ -341,6 +370,19 @@ function redo() {
 }
 
 function updateUndoButtons() { /* buttons removed, ctrl+z/y still works */ }
+
+function getThemeColors() {
+  const light = window.matchMedia('(prefers-color-scheme: light)').matches;
+  return {
+    bg:   light ? '#ffffff' : '#1e1e1e',
+    text: light ? '#1e1e1e' : '#c8c8c8',
+    ph:   light ? '#bbb'    : '#555',
+  };
+}
+
+// Redraw lines when system theme changes
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => drawLines());
+
 
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
@@ -819,6 +861,7 @@ updateUndoButtons();
 <script>
 // ─── Vector SVG export ────────────────────────────────────────────────────────
 function buildVectorSVG({ transparent = false } = {}) {
+  const { bg, text, ph } = getThemeColors();
   const PADDING = 60;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   Object.values(nodes).forEach(n => {
@@ -839,7 +882,7 @@ function buildVectorSVG({ transparent = false } = {}) {
   if (!transparent) {
     const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     bg.setAttribute('width', '100%'); bg.setAttribute('height', '100%');
-    bg.setAttribute('fill', '#1e1e1e'); svg.appendChild(bg);
+    bg.setAttribute('fill', bg); svg.appendChild(bg);
   }
 
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -867,7 +910,7 @@ function buildVectorSVG({ transparent = false } = {}) {
     }
 
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('stroke', '#c8c8c8'); path.setAttribute('stroke-width', '1');
+    path.setAttribute('stroke', text); path.setAttribute('stroke-width', '1');
     path.setAttribute('stroke-linecap', 'square'); path.setAttribute('stroke-linejoin', 'miter');
     path.setAttribute('fill', 'none'); path.setAttribute('d', d);
     g.appendChild(path);
@@ -876,7 +919,7 @@ function buildVectorSVG({ transparent = false } = {}) {
       if (n.children.length === 1 && firstY === pY) return;
       const cPos = nodePos[cid]; if (!cPos) return;
       const branch = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      branch.setAttribute('stroke', '#c8c8c8'); branch.setAttribute('stroke-width', '1');
+      branch.setAttribute('stroke', text); branch.setAttribute('stroke-width', '1');
       branch.setAttribute('stroke-linecap', 'square'); branch.setAttribute('fill', 'none');
       branch.setAttribute('d', `M ${railX} ${cPos.y + NODE_H/2} H ${cPos.x - G}`);
       g.appendChild(branch);
@@ -889,7 +932,7 @@ function buildVectorSVG({ transparent = false } = {}) {
     text.setAttribute('x', pos.x); text.setAttribute('y', pos.y + 15);
     text.setAttribute('font-family', 'JetBrains Mono, monospace');
     text.setAttribute('font-size', '13'); text.setAttribute('font-weight', '400');
-    text.setAttribute('fill', n.label ? '#c8c8c8' : '#555');
+    text.setAttribute('fill', n.label ? text : ph);
     text.setAttribute('letter-spacing', '0.01em');
     text.textContent = n.label || (n.parentId == null ? 'type here…' : '…');
     g.appendChild(text);
@@ -963,7 +1006,7 @@ async function exportRaster(format) {
   setProgress(75, 'compositing…');
   await new Promise(r => setTimeout(r, 30));
 
-  if (!isPNG) { ctx.fillStyle = '#1e1e1e'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+  if (!isPNG) { ctx.fillStyle = bg; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   URL.revokeObjectURL(svgUrl);
 
