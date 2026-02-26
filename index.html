@@ -1,10 +1,11 @@
 <style>
   #mindmap-root {
     width: 100%;
-    height: 600px;
+    height: 600px !important;
+    min-height: 600px !important;
     position: relative;
     overflow: hidden;
-    background: #f5f4f0;
+    background: transparent;
     font-family: 'JetBrains Mono', monospace;
     cursor: default;
     user-select: none;
@@ -14,7 +15,8 @@
 
   #mm-canvas-wrap {
     width: 100%;
-    height: 100%;
+    height: 600px !important;
+    min-height: 600px !important;
     position: relative;
     overflow: hidden;
   }
@@ -46,19 +48,19 @@
   #mindmap-root .mm-node-label {
     font-size: 13px;
     font-weight: 400;
-    color: #1a1a1a;
+    color: #ffffff;
     letter-spacing: 0.01em;
     cursor: pointer;
     white-space: nowrap;
   }
 
-  #mindmap-root .mm-node-label.placeholder { color: #bbb; cursor: text; }
+  #mindmap-root .mm-node-label.placeholder { color: rgba(255,255,255,0.35); cursor: text; }
 
   #mindmap-root .mm-node-input {
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
     font-weight: 400;
-    color: #1a1a1a;
+    color: #ffffff;
     background: transparent;
     border: none;
     outline: none;
@@ -76,7 +78,7 @@
     width: 14px; height: 14px;
     border: none;
     background: transparent;
-    color: #ccc;
+    color: rgba(255,255,255,0.35);
     font-size: 13px;
     cursor: pointer;
     margin-left: 1px;
@@ -87,10 +89,10 @@
     pointer-events: none;
   }
   #mindmap-root .mm-node-el:hover .mm-node-del { opacity: 1; pointer-events: auto; }
-  #mindmap-root .mm-node-del:hover { color: #d44; }
+  #mindmap-root .mm-node-del:hover { color: #f77; }
 
   #mindmap-root .mm-map-line {
-    stroke: #1a1a1a;
+    stroke: #ffffff;
     stroke-width: 0.75px;
     fill: none;
   }
@@ -105,25 +107,25 @@
   #mindmap-root .mm-ctrl-btn {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
-    color: #888;
-    background: #f5f4f0;
-    border: 1px solid #d0ceca;
+    color: #ffffff;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.3);
     padding: 5px 12px;
     cursor: pointer;
     border-radius: 2px;
     letter-spacing: 0.02em;
     transition: border-color 0.1s, color 0.1s;
   }
-  #mindmap-root .mm-ctrl-btn:hover { border-color: #333; color: #333; }
-  #mm-btn-start-over { color: #c88 !important; border-color: #ddc8c8 !important; }
-  #mm-btn-start-over:hover { border-color: #d44 !important; color: #d44 !important; }
+  #mindmap-root .mm-ctrl-btn:hover { border-color: #fff; color: #fff; }
+  #mm-btn-start-over { color: rgba(255,150,150,0.8) !important; border-color: rgba(255,150,150,0.3) !important; }
+  #mm-btn-start-over:hover { border-color: #f77 !important; color: #f77 !important; }
 
   #mm-hint {
     position: absolute;
     bottom: 16px; left: 16px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
-    color: #c8c7c2;
+    color: rgba(255,255,255,0.4);
     z-index: 100;
     line-height: 1.9;
     pointer-events: none;
@@ -133,22 +135,24 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 
-<div id="mindmap-root">
-  <div id="mm-canvas-wrap">
-    <div id="mm-map-container">
-      <svg id="mm-svg-layer"></svg>
+<div style="width:100%; height:600px; min-height:600px; overflow:hidden; position:relative;">
+  <div id="mindmap-root" style="width:100%; height:100%; min-height:600px;">
+    <div id="mm-canvas-wrap">
+      <div id="mm-map-container">
+        <svg id="mm-svg-layer"></svg>
+      </div>
     </div>
-  </div>
-  <div id="mm-controls">
-    <button class="mm-ctrl-btn" onclick="mmExportPDF()">pdf</button>
-    <button class="mm-ctrl-btn" onclick="mmResetZoom()">reset view</button>
-    <button class="mm-ctrl-btn" onclick="mmZoomOut()">−</button>
-    <button class="mm-ctrl-btn" onclick="mmZoomIn()">+</button>
-    <button class="mm-ctrl-btn" id="mm-btn-start-over" onclick="mmStartOver(event)">start over</button>
-  </div>
-  <div id="mm-hint">
-    <div>double-click → edit &nbsp; tab → child &nbsp; enter → sibling &nbsp; esc → cancel</div>
-    <div>scroll → zoom &nbsp; drag → pan</div>
+    <div id="mm-controls">
+      <button class="mm-ctrl-btn" onclick="mmExportPDF()">pdf</button>
+      <button class="mm-ctrl-btn" onclick="mmResetZoom()">reset view</button>
+      <button class="mm-ctrl-btn" onclick="mmZoomOut()">−</button>
+      <button class="mm-ctrl-btn" onclick="mmZoomIn()">+</button>
+      <button class="mm-ctrl-btn" id="mm-btn-start-over" onclick="mmStartOver(event)">start over</button>
+    </div>
+    <div id="mm-hint">
+      <div>double-click → edit &nbsp; tab → child &nbsp; enter → sibling &nbsp; esc → cancel</div>
+      <div>scroll → zoom &nbsp; drag → pan</div>
+    </div>
   </div>
 </div>
 
@@ -157,7 +161,6 @@
 
 <script>
 (function() {
-  // ─── Constants ──────────────────────────────────────────────────────────────
   const COL_GAP   = 80;
   const ROW_H     = 22;
   const GROUP_GAP = 65;
@@ -172,13 +175,11 @@
     return Math.ceil(_mx.measureText(label).width);
   }
 
-  // ─── Storage guard ──────────────────────────────────────────────────────────
   const storageOK = (() => {
     try { localStorage.setItem('_mm_t','1'); localStorage.removeItem('_mm_t'); return true; }
     catch(e) { return false; }
   })();
 
-  // ─── Tree state ─────────────────────────────────────────────────────────────
   let idCounter = 0;
   const uid = () => ++idCounter;
   let root = null;
@@ -213,7 +214,6 @@
     return sib;
   }
 
-  // ─── Layout ─────────────────────────────────────────────────────────────────
   const nodePos = {};
 
   function subtreeHeight(id) {
@@ -255,7 +255,6 @@
     assign(root.id, 0, 0);
   }
 
-  // ─── DOM ────────────────────────────────────────────────────────────────────
   const mapContainer = document.getElementById('mm-map-container');
   const svgLayer     = document.getElementById('mm-svg-layer');
   const canvasWrap   = document.getElementById('mm-canvas-wrap');
@@ -362,7 +361,6 @@
     drawLines();
   }
 
-  // ─── Live reposition ────────────────────────────────────────────────────────
   function rerenderPositionsOnly() {
     if (isRendering) return;
     Object.keys(nodePos).forEach(k => delete nodePos[k]);
@@ -377,7 +375,6 @@
     drawLines();
   }
 
-  // ─── Lines ──────────────────────────────────────────────────────────────────
   function drawLines() {
     svgLayer.innerHTML = '';
     const GAP = 16, RAIL = 25;
@@ -433,7 +430,6 @@
     });
   }
 
-  // ─── Edit ───────────────────────────────────────────────────────────────────
   function startEdit(id) {
     const els = nodeEls[id];
     if (!els) return;
@@ -488,7 +484,6 @@
     rerenderPositionsOnly();
   }
 
-  // ─── Render ─────────────────────────────────────────────────────────────────
   let isRendering = false;
   function renderAll() {
     if (isRendering) return;
@@ -502,7 +497,6 @@
     isRendering = false;
   }
 
-  // ─── Pan / Zoom ─────────────────────────────────────────────────────────────
   let tx = 40, ty = 40, scale = 1;
   let isPanning = false, panStart = null;
 
@@ -548,7 +542,6 @@
   window.mmZoomOut   = () => { scale = Math.max(0.15, scale / 1.2); updateTransform(); saveState(); };
   window.mmResetZoom = () => { tx = 40; ty = 40; scale = 1; updateTransform(); saveState(); };
 
-  // ─── Persistence ────────────────────────────────────────────────────────────
   function saveState() {
     if (!storageOK) return;
     try {
@@ -585,7 +578,6 @@
     updateTransform(); renderAll();
   };
 
-  // ─── PDF Export ─────────────────────────────────────────────────────────────
   window.mmExportPDF = async () => {
     if (!Object.keys(nodePos).length) return;
     const PADDING = 60;
@@ -614,7 +606,8 @@
     await new Promise(r => requestAnimationFrame(r));
 
     const canvas = await html2canvas(wrap, {
-      backgroundColor: '#f5f4f0', scale: 2, useCORS: true,
+      backgroundColor: null,
+      scale: 2, useCORS: true,
       width: contentW, height: contentH, x: 0, y: 0,
       scrollX: 0, scrollY: 0, windowWidth: contentW, windowHeight: contentH,
     });
@@ -634,7 +627,6 @@
     pdf.save('mindmap.pdf');
   };
 
-  // ─── Boot ───────────────────────────────────────────────────────────────────
   const loaded = loadState();
   if (!loaded) root = createNode(null, '');
   renderAll();
