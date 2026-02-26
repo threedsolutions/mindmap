@@ -1,34 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mind Map</title>
 <style>
-  #mindmap-root {
-    width: 100%;
-    height: 100vh !important;
-    min-height: 100vh !important;
-    position: relative;
-    overflow: hidden;
-    background: transparent;
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  ::selection { background: #d0ceca; color: #1a1a1a; }
+
+  body {
+    background: #f5f4f0;
     font-family: 'JetBrains Mono', monospace;
+    overflow: hidden;
+    width: 100vw; height: 100vh;
     cursor: default;
     user-select: none;
   }
 
-  #mindmap-root * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  #mm-canvas-wrap {
-    width: 100%;
-    height: 100vh !important;
-    min-height: 100vh !important;
+  #canvas-wrap {
+    width: 100%; height: 100%;
     position: relative;
     overflow: hidden;
   }
 
-  #mm-map-container {
+  #map-container {
     position: absolute;
     top: 0; left: 0;
     transform-origin: 0 0;
     z-index: 2;
   }
 
-  #mm-svg-layer {
+  #svg-layer {
     position: absolute;
     top: 0; left: 0;
     width: 9999px; height: 9999px;
@@ -37,601 +42,945 @@
     overflow: visible;
   }
 
-  #mindmap-root .mm-node-el {
+  .node-el {
     position: absolute;
     display: flex;
     align-items: center;
     height: 22px;
     white-space: nowrap;
+    transition: top 0.15s ease, left 0.15s ease, opacity 0.15s ease;
   }
 
-  #mindmap-root .mm-node-label {
+  .node-el.node-entering { opacity: 0; }
+  .node-el.node-visible  { opacity: 1; }
+
+  .node-label {
     font-size: 13px;
     font-weight: 400;
-    color: #ffffff;
+    color: #1a1a1a;
     letter-spacing: 0.01em;
     cursor: pointer;
     white-space: nowrap;
+    padding: 1px 4px;
+    border-radius: 2px;
+    transition: background 0.1s;
+  }
+  .node-label.placeholder { color: #bbb; cursor: text; }
+  .node-label.placeholder::after {
+    content: '';
+    animation: dots 1.5s infinite;
+  }
+  @keyframes dots {
+    0%   { content: ''; }
+    25%  { content: '.'; }
+    50%  { content: '..'; }
+    75%  { content: '...'; }
+    100% { content: ''; }
   }
 
-  #mindmap-root .mm-node-label.placeholder { color: rgba(255,255,255,0.35); cursor: text; }
-
-  #mindmap-root .mm-node-input {
+  .node-el.is-editing .node-label { display: none; }
+  .node-input {
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
     font-weight: 400;
-    color: #ffffff;
+    color: #1a1a1a;
     background: transparent;
     border: none;
     outline: none;
-    padding: 0;
+    padding: 1px 4px;
+    border-radius: 2px;
     min-width: 50px;
     width: 80px;
     letter-spacing: 0.01em;
     user-select: text;
   }
 
-  #mindmap-root .mm-node-del {
+  .node-del {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 14px; height: 14px;
     border: none;
     background: transparent;
-    color: rgba(255,255,255,0.35);
+    color: #ccc;
     font-size: 13px;
     cursor: pointer;
-    margin-left: 1px;
-    margin-right: 1px;
+    margin-left: 1px; margin-right: 1px;
     flex-shrink: 0;
     transition: color 0.1s;
     opacity: 0;
     pointer-events: none;
   }
-  #mindmap-root .mm-node-el:hover .mm-node-del { opacity: 1; pointer-events: auto; }
-  #mindmap-root .mm-node-del:hover { color: #f77; }
+  .node-el:hover .node-del { opacity: 1; pointer-events: auto; }
+  .node-del:hover { color: #d44; }
 
-  #mindmap-root .mm-map-line {
-    stroke: #ffffff;
-    stroke-width: 0.75px;
-    fill: none;
+  .node-el.dragging { opacity: 0.35; pointer-events: none; }
+  #drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    z-index: 999;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: #1a1a1a;
+    background: #f5f4f0;
+    border: 1px solid #d0ceca;
+    padding: 2px 8px;
+    border-radius: 2px;
+    display: none;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   }
 
-  #mm-controls {
-    position: absolute;
-    bottom: 16px; right: 16px;
+  .node-el.drop-target .node-label { background: #e0ddd6; }
+
+  .map-line {
+    stroke: #1a1a1a;
+    stroke-width: 1px;
+    fill: none;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+  }
+
+  #controls {
+    position: fixed;
+    bottom: 24px; right: 24px;
     display: flex; gap: 6px;
     z-index: 100;
+    align-items: center;
   }
 
-  #mindmap-root .mm-ctrl-btn {
+  .ctrl-btn {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
-    color: #ffffff;
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.3);
+    color: #1a1a1a;
+    background: #f5f4f0;
+    border: 1px solid #d0ceca;
     padding: 5px 12px;
     cursor: pointer;
     border-radius: 2px;
     letter-spacing: 0.02em;
-    transition: border-color 0.1s, color 0.1s;
+    transition: border-color 0.1s, color 0.1s, opacity 0.15s;
+    height: 28px;
   }
-  #mindmap-root .mm-ctrl-btn:hover { border-color: #fff; color: #fff; }
-  #mm-btn-start-over { color: rgba(255,150,150,0.8) !important; border-color: rgba(255,150,150,0.3) !important; }
-  #mm-btn-start-over:hover { border-color: #f77 !important; color: #f77 !important; }
+  .ctrl-btn:hover { border-color: #1a1a1a; color: #1a1a1a; }
+  .ctrl-btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
 
-  #mm-hint {
-    position: absolute;
-    bottom: 16px; left: 16px;
+  #btn-start-over { color: #c88; border-color: #ddc8c8; }
+  #btn-start-over:hover { border-color: #d44; color: #d44; }
+
+  #hint {
+    position: fixed;
+    bottom: 24px; left: 24px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
-    color: rgba(255,255,255,0.4);
+    color: #1a1a1a;
     z-index: 100;
     line-height: 1.9;
     pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  #export-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(245,244,240,0.92);
+    z-index: 200;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #888;
+    letter-spacing: 0.04em;
+  }
+  #export-overlay.visible { display: flex; }
+  #export-progress-wrap {
+    width: 180px; height: 2px;
+    background: #ddd; border-radius: 1px; overflow: hidden;
+  }
+  #export-progress-bar {
+    height: 100%; width: 0%;
+    background: #1a1a1a;
+    transition: width 0.2s ease;
+    border-radius: 1px;
   }
 </style>
+</head>
+<body>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
-
-<div style="width:100%; height:100vh; min-height:100vh; overflow:hidden; position:relative;">
-  <div id="mindmap-root" style="width:100%; height:100%; min-height:100vh;">
-    <div id="mm-canvas-wrap">
-      <div id="mm-map-container">
-        <svg id="mm-svg-layer"></svg>
-      </div>
-    </div>
-    <div id="mm-controls">
-      <button class="mm-ctrl-btn" onclick="mmExportPDF()">pdf</button>
-      <button class="mm-ctrl-btn" onclick="mmResetZoom()">reset view</button>
-      <button class="mm-ctrl-btn" onclick="mmZoomOut()">−</button>
-      <button class="mm-ctrl-btn" onclick="mmZoomIn()">+</button>
-      <button class="mm-ctrl-btn" id="mm-btn-start-over" onclick="mmStartOver(event)">start over</button>
-    </div>
-    <div id="mm-hint">
-      <div>double-click → edit &nbsp; tab → child &nbsp; enter → sibling &nbsp; esc → cancel</div>
-      <div>scroll → zoom &nbsp; drag → pan</div>
-    </div>
+<div id="canvas-wrap">
+  <div id="map-container">
+    <svg id="svg-layer"></svg>
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<div id="drag-ghost"></div>
+
+<div id="controls">
+  <button class="ctrl-btn" onclick="exportSVG()">svg</button>
+  <button class="ctrl-btn" onclick="exportRaster('png')">png</button>
+  <button class="ctrl-btn" onclick="exportRaster('jpeg')">jpeg</button>
+  <button class="ctrl-btn" onclick="resetZoom()">reset view</button>
+  <button class="ctrl-btn" onclick="zoomOut()">−</button>
+  <button class="ctrl-btn" onclick="zoomIn()">+</button>
+  <button class="ctrl-btn" id="btn-start-over" onclick="startOver(event)">start over</button>
+</div>
+
+<div id="hint">
+  <div>tab → child</div>
+  <div>enter → sibling</div>
+  <div>ctrl+z → undo &nbsp; ctrl+y → redo</div>
+  <div>ctrl + start over → reset map</div>
+</div>
+
+<div id="export-overlay">
+  <span id="export-label">exporting…</span>
+  <div id="export-progress-wrap">
+    <div id="export-progress-bar"></div>
+  </div>
+</div>
 
 <script>
-(function() {
-  const COL_GAP   = 80;
-  const ROW_H     = 22;
-  const GROUP_GAP = 65;
-  const NODE_H    = 22;
-  const STORAGE_KEY = 'mindmap_v1';
+const COL_GAP   = 80;
+const ROW_H     = 22;
+const GROUP_GAP = 65;
+const NODE_H    = 22;
 
-  const _mc = document.createElement('canvas');
-  const _mx = _mc.getContext('2d');
-  _mx.font = '400 13px "JetBrains Mono", monospace';
-  function measureText(label) {
-    if (!label) return 40;
-    return Math.ceil(_mx.measureText(label).width);
+const _mc = document.createElement('canvas');
+const _mx = _mc.getContext('2d');
+_mx.font = '400 13px "JetBrains Mono", monospace';
+function measureText(label) {
+  if (!label) return 40;
+  return Math.ceil(_mx.measureText(label).width);
+}
+
+// ─── Tree ─────────────────────────────────────────────────────────────────────
+let idCounter = 0;
+const uid = () => ++idCounter;
+let root = null;
+const nodes = {};
+
+function createNode(parentId, label = '') {
+  const n = { id: uid(), label, children: [], parentId: parentId ?? null };
+  nodes[n.id] = n;
+  if (parentId != null && nodes[parentId]) nodes[parentId].children.push(n.id);
+  return n;
+}
+
+function deleteNode(id) {
+  const n = nodes[id];
+  if (!n) return;
+  if (n.parentId != null && nodes[n.parentId]) {
+    const arr = nodes[n.parentId].children;
+    arr.splice(arr.indexOf(id), 1);
   }
+  [...n.children].forEach(deleteNode);
+  delete nodes[id];
+}
 
-  const storageOK = (() => {
-    try { localStorage.setItem('_mm_t','1'); localStorage.removeItem('_mm_t'); return true; }
-    catch(e) { return false; }
-  })();
+function insertSiblingAfter(id) {
+  const n = nodes[id];
+  if (!n || n.parentId == null) return null;
+  const parent = nodes[n.parentId];
+  const sib = { id: uid(), label: '', children: [], parentId: n.parentId };
+  nodes[sib.id] = sib;
+  parent.children.splice(parent.children.indexOf(id) + 1, 0, sib.id);
+  return sib;
+}
 
-  let idCounter = 0;
-  const uid = () => ++idCounter;
-  let root = null;
-  const nodes = {};
+// ─── Undo / Redo ──────────────────────────────────────────────────────────────
+const HISTORY_LIMIT = 60;
+let undoStack = [];
+let redoStack = [];
+let isUndoRedo = false;
 
-  function createNode(parentId, label = '') {
-    const n = { id: uid(), label, children: [], parentId: parentId ?? null };
-    nodes[n.id] = n;
-    if (parentId != null && nodes[parentId]) nodes[parentId].children.push(n.id);
-    return n;
-  }
+function snapshotTree() {
+  return JSON.stringify({
+    nodes: Object.values(nodes).map(n => ({
+      id: n.id, label: n.label, children: [...n.children], parentId: n.parentId
+    })),
+    rootId: root?.id, idCounter
+  });
+}
 
-  function deleteNode(id) {
+function pushUndo() {
+  if (isUndoRedo) return;
+  undoStack.push(snapshotTree());
+  if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+  redoStack = [];
+  updateUndoButtons();
+}
+
+function restoreSnapshot(snapshot) {
+  const data = JSON.parse(snapshot);
+  Object.keys(nodes).forEach(k => delete nodes[k]);
+  data.nodes.forEach(n => { nodes[n.id] = { ...n, children: [] }; });
+  data.nodes.forEach(n => {
+    if (nodes[n.id]) nodes[n.id].children = n.children.filter(cid => nodes[cid]);
+  });
+  idCounter = data.idCounter;
+  root = nodes[data.rootId];
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(snapshotTree());
+  isUndoRedo = true; restoreSnapshot(undoStack.pop()); isUndoRedo = false;
+  renderAll(); updateUndoButtons();
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(snapshotTree());
+  isUndoRedo = true; restoreSnapshot(redoStack.pop()); isUndoRedo = false;
+  renderAll(); updateUndoButtons();
+}
+
+function updateUndoButtons() { /* buttons removed, ctrl+z/y still works */ }
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+});
+
+// ─── Layout ───────────────────────────────────────────────────────────────────
+const nodePos = {};
+const subtreeHeightCache = {};
+
+function subtreeHeight(id) {
+  if (subtreeHeightCache[id] !== undefined) return subtreeHeightCache[id];
+  const n = nodes[id];
+  if (!n || n.children.length === 0) return (subtreeHeightCache[id] = ROW_H);
+  const total = n.children.reduce((s, cid) => s + subtreeHeight(cid), 0);
+  return (subtreeHeightCache[id] = Math.max(GROUP_GAP, total));
+}
+
+function invalidateHeightCache() {
+  Object.keys(subtreeHeightCache).forEach(k => delete subtreeHeightCache[k]);
+}
+
+function layoutTree() {
+  invalidateHeightCache();
+  const maxW = {};
+  function measure(id, depth) {
     const n = nodes[id];
     if (!n) return;
-    if (n.parentId != null && nodes[n.parentId]) {
-      const arr = nodes[n.parentId].children;
-      arr.splice(arr.indexOf(id), 1);
-    }
-    [...n.children].forEach(deleteNode);
-    delete nodes[id];
+    const lbl = (activeEditId === id && nodeEls[id]) ? nodeEls[id].inputEl.value : n.label;
+    const w = measureText(lbl);
+    if (maxW[depth] === undefined || w > maxW[depth]) maxW[depth] = w;
+    n.children.forEach(cid => measure(cid, depth + 1));
+  }
+  measure(root.id, 0);
+
+  const xAt = {};
+  let cx = 0;
+  const keys = Object.keys(maxW).map(Number);
+  const maxD = keys.length ? Math.max(...keys) : 0;
+  for (let d = 0; d <= maxD; d++) {
+    xAt[d] = cx;
+    cx += (maxW[d] || 0) + COL_GAP;
   }
 
-  function insertSiblingAfter(id) {
-    const n = nodes[id];
-    if (!n || n.parentId == null) return null;
-    const parent = nodes[n.parentId];
-    const sib = { id: uid(), label: '', children: [], parentId: n.parentId };
-    nodes[sib.id] = sib;
-    const idx = parent.children.indexOf(id);
-    parent.children.splice(idx + 1, 0, sib.id);
-    return sib;
-  }
-
-  const nodePos = {};
-
-  function subtreeHeight(id) {
-    const n = nodes[id];
-    if (!n || n.children.length === 0) return ROW_H;
-    const total = n.children.reduce((s, cid) => s + subtreeHeight(cid), 0);
-    return Math.max(GROUP_GAP, total);
-  }
-
-  function layoutTree() {
-    const maxW = {};
-    function measureDepths(id, depth) {
-      const n = nodes[id];
-      if (!n) return;
-      const liveLabel = (activeEditId === id && nodeEls[id])
-        ? nodeEls[id].inputEl.value : n.label;
-      const w = measureText(liveLabel);
-      if (maxW[depth] === undefined || w > maxW[depth]) maxW[depth] = w;
-      n.children.forEach(cid => measureDepths(cid, depth + 1));
-    }
-    measureDepths(root.id, 0);
-
-    const xAtDepth = {};
-    let cx = 0;
-    const maxDepth = Math.max(...Object.keys(maxW).map(Number));
-    for (let d = 0; d <= maxDepth; d++) {
-      xAtDepth[d] = cx;
-      cx += (maxW[d] || 0) + COL_GAP;
-    }
-
-    function assign(id, depth, y) {
-      nodePos[id] = { x: xAtDepth[depth], y };
-      let cy = y;
-      nodes[id].children.forEach(cid => {
-        assign(cid, depth + 1, cy);
-        cy += subtreeHeight(cid);
-      });
-    }
-    assign(root.id, 0, 0);
-  }
-
-  const mapContainer = document.getElementById('mm-map-container');
-  const svgLayer     = document.getElementById('mm-svg-layer');
-  const canvasWrap   = document.getElementById('mm-canvas-wrap');
-  const nodeEls      = {};
-
-  let suppressBlur = false;
-  let activeEditId = null;
-
-  function buildDOM() {
-    mapContainer.querySelectorAll('.mm-node-el').forEach(e => e.remove());
-    svgLayer.innerHTML = '';
-    Object.keys(nodeEls).forEach(k => delete nodeEls[k]);
-
-    function buildNode(n) {
-      const pos = nodePos[n.id];
-      if (!pos) return;
-
-      const el = document.createElement('div');
-      el.className = 'mm-node-el';
-      el.dataset.id = n.id;
-      el.style.left = pos.x + 'px';
-      el.style.top  = pos.y + 'px';
-
-      const labelEl = document.createElement('span');
-      labelEl.className = 'mm-node-label' + (n.label === '' ? ' placeholder' : '');
-      labelEl.textContent = n.label !== '' ? n.label : (n.parentId == null ? 'type here…' : '…');
-
-      const inputEl = document.createElement('input');
-      inputEl.className = 'mm-node-input';
-      inputEl.type = 'text';
-      inputEl.value = n.label;
-      inputEl.style.display = 'none';
-
-      const delBtn = document.createElement('span');
-      delBtn.className = 'mm-node-del';
-      delBtn.innerHTML = '×';
-
-      el.appendChild(labelEl);
-      el.appendChild(inputEl);
-
-      if (n.parentId != null) {
-        delBtn.addEventListener('mousedown', () => { suppressBlur = true; });
-        delBtn.addEventListener('click', () => {
-          setTimeout(() => { suppressBlur = false; }, 0);
-          deleteNode(n.id);
-          renderAll();
-        });
-        el.appendChild(delBtn);
-      }
-
-      nodeEls[n.id] = { el, labelEl, inputEl };
-      mapContainer.appendChild(el);
-
-      labelEl.addEventListener('dblclick', () => startEdit(n.id));
-      if (n.label === '') labelEl.addEventListener('click', () => startEdit(n.id));
-
-      inputEl.addEventListener('keydown', e => {
-        if (e.key === 'Escape') {
-          e.preventDefault(); e.stopPropagation();
-          cancelEdit(n.id);
-        } else if (e.key === 'Tab') {
-          e.preventDefault(); e.stopPropagation();
-          suppressBlur = true;
-          n.label = inputEl.value.trim() || n.label;
-          activeEditId = null;
-          suppressBlur = false;
-          const child = createNode(n.id, '');
-          renderAll();
-          requestAnimationFrame(() => startEdit(child.id));
-        } else if (e.key === 'Enter') {
-          e.preventDefault(); e.stopPropagation();
-          suppressBlur = true;
-          const val = inputEl.value.trim();
-          activeEditId = null;
-          if (!val && n.parentId != null) {
-            suppressBlur = false;
-            deleteNode(n.id); renderAll(); return;
-          }
-          n.label = val || n.label;
-          suppressBlur = false;
-          if (n.parentId != null) {
-            const sib = insertSiblingAfter(n.id);
-            if (sib) { renderAll(); requestAnimationFrame(() => startEdit(sib.id)); }
-          } else { renderAll(); }
-        } else { e.stopPropagation(); }
-      });
-
-      inputEl.addEventListener('input', () => {
-        inputEl.style.width = Math.max(50, inputEl.value.length * 8.5 + 16) + 'px';
-        n.label = inputEl.value;
-        rerenderPositionsOnly();
-      });
-
-      inputEl.addEventListener('blur', () => {
-        if (suppressBlur) return;
-        if (!document.contains(inputEl)) return;
-        confirmEdit(n.id);
-      });
-
-      n.children.forEach(cid => { if (nodes[cid]) buildNode(nodes[cid]); });
-    }
-
-    if (root) buildNode(root);
-    drawLines();
-  }
-
-  function rerenderPositionsOnly() {
-    if (isRendering) return;
-    Object.keys(nodePos).forEach(k => delete nodePos[k]);
-    layoutTree();
-    Object.values(nodes).forEach(n => {
-      const pos = nodePos[n.id];
-      const refs = nodeEls[n.id];
-      if (!pos || !refs) return;
-      refs.el.style.left = pos.x + 'px';
-      refs.el.style.top  = pos.y + 'px';
-    });
-    drawLines();
-  }
-
-  function drawLines() {
-    svgLayer.innerHTML = '';
-    const GAP = 16, RAIL = 25;
-
-    Object.values(nodes).forEach(n => {
-      if (!n.children.length) return;
-      const pPos = nodePos[n.id];
-      if (!pPos) return;
-      const els = nodeEls[n.id];
-
-      let labelW;
-      if (activeEditId === n.id && els && els.inputEl.style.display !== 'none') {
-        labelW = els.inputEl.offsetWidth || measureText(els.inputEl.value);
-      } else {
-        labelW = els ? (els.labelEl.offsetWidth || measureText(n.label)) : measureText(n.label);
-      }
-
-      const firstPos = nodePos[n.children[0]];
-      const lastPos  = nodePos[n.children[n.children.length - 1]];
-      if (!firstPos || !lastPos) return;
-
-      const railX = firstPos.x - RAIL;
-      const x1 = pPos.x + labelW + GAP;
-      const y1 = pPos.y + NODE_H / 2;
-
-      const stub = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      stub.setAttribute('class', 'mm-map-line');
-      stub.setAttribute('x1', x1); stub.setAttribute('y1', y1);
-      stub.setAttribute('x2', railX); stub.setAttribute('y2', y1);
-      svgLayer.appendChild(stub);
-
-      const firstY = firstPos.y + NODE_H / 2;
-      const lastY  = lastPos.y  + NODE_H / 2;
-
-      if (n.children.length > 1 || firstY !== y1) {
-        const rail = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        rail.setAttribute('class', 'mm-map-line');
-        rail.setAttribute('x1', railX); rail.setAttribute('y1', Math.min(y1, firstY));
-        rail.setAttribute('x2', railX); rail.setAttribute('y2', lastY);
-        svgLayer.appendChild(rail);
-      }
-
-      n.children.forEach(cid => {
-        const cPos = nodePos[cid];
-        if (!cPos) return;
-        const cy = cPos.y + NODE_H / 2;
-        const branch = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        branch.setAttribute('class', 'mm-map-line');
-        branch.setAttribute('x1', railX); branch.setAttribute('y1', cy);
-        branch.setAttribute('x2', cPos.x - GAP); branch.setAttribute('y2', cy);
-        svgLayer.appendChild(branch);
-      });
+  function assign(id, depth, y) {
+    nodePos[id] = { x: xAt[depth] ?? 0, y };
+    let cy = y;
+    nodes[id].children.forEach(cid => {
+      assign(cid, depth + 1, cy);
+      cy += subtreeHeight(cid);
     });
   }
+  assign(root.id, 0, 0);
+}
 
-  function startEdit(id) {
-    const els = nodeEls[id];
-    if (!els) return;
-    activeEditId = id;
-    nodes[id]._originalLabel = nodes[id].label;
-    els.labelEl.style.display = 'none';
-    els.inputEl.style.display = 'inline-block';
-    els.inputEl.value = nodes[id]?.label || '';
-    els.inputEl.style.width = Math.max(50, Math.max(4, els.inputEl.value.length) * 8.5 + 16) + 'px';
-    setTimeout(() => { els.inputEl.focus(); els.inputEl.select(); }, 30);
-  }
+// ─── DOM ──────────────────────────────────────────────────────────────────────
+const mapContainer = document.getElementById('map-container');
+const svgLayer = document.getElementById('svg-layer');
+const nodeEls = {};
+let suppressBlur = false;
+let activeEditId = null;
 
-  function confirmEdit(id) {
-    if (activeEditId === id) activeEditId = null;
-    const els = nodeEls[id];
-    if (!els) return;
-    const { labelEl, inputEl } = els;
-    if (inputEl.style.display === 'none') return;
-    const val = inputEl.value.trim();
-    const n = nodes[id];
-    if (!n) return;
+let dragNodeId   = null;
+const dragGhost  = document.getElementById('drag-ghost');
+let dropTargetId = null;
 
-    if (!val && n.parentId == null && Object.keys(nodes).length === 1) {
-      setTimeout(() => inputEl.focus(), 10); return;
-    }
-    if (!val && n.parentId != null) {
-      inputEl.style.display = 'none';
-      labelEl.style.display = '';
-      if (n._originalLabel !== undefined) { n.label = n._originalLabel; delete n._originalLabel; }
-      deleteNode(id); renderAll(); return;
-    }
+function buildDOM() {
+  mapContainer.querySelectorAll('.node-el').forEach(e => e.remove());
+  svgLayer.innerHTML = '';
+  Object.keys(nodeEls).forEach(k => delete nodeEls[k]);
 
-    n.label = val;
-    if (n._originalLabel !== undefined) delete n._originalLabel;
-    labelEl.textContent = val || 'type here…';
-    labelEl.className = 'mm-node-label' + (!val ? ' placeholder' : '');
-    labelEl.style.display = '';
+  function buildNode(n) {
+    const pos = nodePos[n.id];
+    if (!pos) return;
+
+    const el = document.createElement('div');
+    el.className = 'node-el node-entering';
+    el.dataset.id = n.id;
+    el.style.left = pos.x + 'px';
+    el.style.top  = pos.y + 'px';
+
+    const labelEl = document.createElement('span');
+    labelEl.className = 'node-label' + (n.label === '' ? ' placeholder' : '');
+    labelEl.textContent = n.label !== '' ? n.label : (n.parentId == null ? 'type here' : '');
+
+    const inputEl = document.createElement('input');
+    inputEl.className = 'node-input';
+    inputEl.type = 'text';
+    inputEl.value = n.label;
     inputEl.style.display = 'none';
-    renderAll();
-  }
 
-  function cancelEdit(id) {
-    if (activeEditId === id) activeEditId = null;
-    const n = nodes[id];
-    if (!n) return;
-    if (n._originalLabel !== undefined) { n.label = n._originalLabel; delete n._originalLabel; }
-    if (!n.label && n.parentId != null) { deleteNode(id); renderAll(); return; }
-    const els = nodeEls[id];
-    if (!els) return;
-    els.labelEl.style.display = '';
-    els.inputEl.style.display = 'none';
-    rerenderPositionsOnly();
-  }
+    const delBtn = document.createElement('span');
+    delBtn.className = 'node-del';
+    delBtn.innerHTML = '×';
 
-  let isRendering = false;
-  function renderAll() {
-    if (isRendering) return;
-    isRendering = true;
-    suppressBlur = true;
-    Object.keys(nodePos).forEach(k => delete nodePos[k]);
-    layoutTree();
-    buildDOM();
-    saveState();
-    suppressBlur = false;
-    isRendering = false;
-  }
+    el.appendChild(labelEl);
+    el.appendChild(inputEl);
+    if (n.parentId != null) {
+      delBtn.addEventListener('mousedown', () => { suppressBlur = true; });
+      delBtn.addEventListener('click', () => {
+        setTimeout(() => { suppressBlur = false; }, 0);
+        pushUndo(); deleteNode(n.id); renderAll();
+      });
+      el.appendChild(delBtn);
+    }
 
-  let tx = 40, ty = 40, scale = 1;
-  let isPanning = false, panStart = null;
+    nodeEls[n.id] = { el, labelEl, inputEl };
+    mapContainer.appendChild(el);
 
-  function updateTransform() {
-    mapContainer.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
-  }
+    requestAnimationFrame(() => el.classList.replace('node-entering', 'node-visible'));
 
-  let saveDebounceTimer = null;
-  function saveDebounced() {
-    clearTimeout(saveDebounceTimer);
-    saveDebounceTimer = setTimeout(saveState, 300);
-  }
+    labelEl.addEventListener('dblclick', () => startEdit(n.id));
+    if (n.label === '') labelEl.addEventListener('click', () => startEdit(n.id));
 
-  canvasWrap.addEventListener('wheel', e => {
-    e.preventDefault();
-    const delta = Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 100);
-    const f = 1 - delta * 0.0008;
-    const r = canvasWrap.getBoundingClientRect();
-    const mx = e.clientX - r.left, my = e.clientY - r.top;
-    tx = mx - (mx - tx) * f;
-    ty = my - (my - ty) * f;
-    scale = Math.max(0.15, Math.min(4, scale * f));
-    updateTransform(); saveDebounced();
-  }, { passive: false });
+    // ── Drag ──
+    labelEl.addEventListener('mousedown', e => {
+      if (e.detail >= 2 || e.button !== 0) return;
+      const startX = e.clientX, startY = e.clientY;
+      let dragging = false;
 
-  canvasWrap.addEventListener('mousedown', e => {
-    if (e.target.closest('.mm-node-el')) return;
-    isPanning = true;
-    panStart = { x: e.clientX - tx, y: e.clientY - ty };
-    canvasWrap.style.cursor = 'grabbing';
-  });
-  window.addEventListener('mousemove', e => {
-    if (!isPanning) return;
-    tx = e.clientX - panStart.x;
-    ty = e.clientY - panStart.y;
-    updateTransform();
-  });
-  window.addEventListener('mouseup', () => {
-    if (isPanning) { isPanning = false; canvasWrap.style.cursor = ''; saveState(); }
-  });
+      const onMove = mv => {
+        if (!dragging && (Math.abs(mv.clientX - startX) > 5 || Math.abs(mv.clientY - startY) > 5)) {
+          dragging = true;
+          dragNodeId = n.id;
+          dragGhost.textContent = n.label || '…';
+          dragGhost.style.display = 'block';
+          el.classList.add('dragging');
+        }
+        if (dragging) {
+          dragGhost.style.left = (mv.clientX + 12) + 'px';
+          dragGhost.style.top  = (mv.clientY + 8) + 'px';
+          updateDropTarget(mv.clientX, mv.clientY);
+        }
+      };
 
-  window.mmZoomIn    = () => { scale = Math.min(4, scale * 1.2); updateTransform(); saveState(); };
-  window.mmZoomOut   = () => { scale = Math.max(0.15, scale / 1.2); updateTransform(); saveState(); };
-  window.mmResetZoom = () => { tx = 40; ty = 40; scale = 1; updateTransform(); saveState(); };
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        if (dragging) {
+          el.classList.remove('dragging');
+          dragGhost.style.display = 'none';
+          commitDrop();
+          dragNodeId = null; dropTargetId = null;
+          clearDropHighlights();
+        }
+      };
 
-  function saveState() {
-    if (!storageOK) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        nodes: Object.values(nodes).map(n => ({
-          id: n.id, label: n.label, children: [...n.children], parentId: n.parentId
-        })),
-        rootId: root?.id, idCounter, tx, ty, scale
-      }));
-    } catch(e) {}
-  }
-
-  function loadState() {
-    if (!storageOK) return false;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return false;
-      const data = JSON.parse(raw);
-      if (!data.nodes?.length) return false;
-      data.nodes.forEach(n => { nodes[n.id] = n; });
-      idCounter = data.idCounter || data.nodes.reduce((m, n) => Math.max(m, n.id), 0);
-      root = nodes[data.rootId] || nodes[data.nodes[0].id];
-      tx = data.tx ?? 40; ty = data.ty ?? 40; scale = data.scale ?? 1;
-      return true;
-    } catch(e) { return false; }
-  }
-
-  window.mmStartOver = (e) => {
-    if (!e.ctrlKey) return;
-    Object.keys(nodes).forEach(k => delete nodes[k]);
-    idCounter = 0;
-    root = createNode(null, '');
-    tx = 40; ty = 40; scale = 1;
-    updateTransform(); renderAll();
-  };
-
-  window.mmExportPDF = async () => {
-    if (!Object.keys(nodePos).length) return;
-    const PADDING = 60;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    Object.values(nodes).forEach(n => {
-      const pos = nodePos[n.id];
-      if (!pos) return;
-      const els = nodeEls[n.id];
-      const w = els ? (els.labelEl.offsetWidth || 80) : 80;
-      minX = Math.min(minX, pos.x); minY = Math.min(minY, pos.y);
-      maxX = Math.max(maxX, pos.x + w); maxY = Math.max(maxY, pos.y + NODE_H);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
     });
 
-    const contentW = maxX - minX + PADDING * 2;
-    const contentH = maxY - minY + PADDING * 2;
-    const prevTx = tx, prevTy = ty, prevScale = scale;
-    tx = -minX + PADDING; ty = -minY + PADDING; scale = 1;
-    updateTransform();
-
-    const wrap = document.getElementById('mm-canvas-wrap');
-    const prevW = wrap.style.width, prevH = wrap.style.height;
-    wrap.style.width = contentW + 'px'; wrap.style.height = contentH + 'px';
-    document.getElementById('mm-controls').style.display = 'none';
-    document.getElementById('mm-hint').style.display = 'none';
-
-    await new Promise(r => requestAnimationFrame(r));
-
-    const canvas = await html2canvas(wrap, {
-      backgroundColor: null,
-      scale: 2, useCORS: true,
-      width: contentW, height: contentH, x: 0, y: 0,
-      scrollX: 0, scrollY: 0, windowWidth: contentW, windowHeight: contentH,
+    // ── Keyboard ──
+    inputEl.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation();
+        cancelEdit(n.id);
+      } else if (e.key === 'Tab') {
+        e.preventDefault(); e.stopPropagation();
+        // suppressBlur stays true — renderAll() will reset it
+        suppressBlur = true;
+        n.label = inputEl.value.trim() || n.label;
+        activeEditId = null;
+        pushUndo();
+        const child = createNode(n.id, '');
+        renderAll();
+        requestAnimationFrame(() => startEdit(child.id));
+      } else if (e.key === 'Enter') {
+        e.preventDefault(); e.stopPropagation();
+        suppressBlur = true;
+        const val = inputEl.value.trim();
+        activeEditId = null;
+        if (!val && n.parentId != null) {
+          deleteNode(n.id); renderAll(); return;
+        }
+        n.label = val || n.label;
+        if (n.parentId != null) {
+          pushUndo();
+          const sib = insertSiblingAfter(n.id);
+          if (sib) { renderAll(); requestAnimationFrame(() => startEdit(sib.id)); }
+        } else { renderAll(); }
+      } else {
+        e.stopPropagation();
+      }
     });
 
-    wrap.style.width = prevW; wrap.style.height = prevH;
-    document.getElementById('mm-controls').style.display = '';
-    document.getElementById('mm-hint').style.display = '';
-    tx = prevTx; ty = prevTy; scale = prevScale;
-    updateTransform();
-
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({
-      orientation: contentW > contentH ? 'landscape' : 'portrait',
-      unit: 'px', format: [contentW, contentH]
+    inputEl.addEventListener('input', () => {
+      inputEl.style.width = Math.max(50, inputEl.value.length * 8.5 + 16) + 'px';
+      n.label = inputEl.value;
+      rerenderPositionsOnly();
     });
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, contentW, contentH);
-    pdf.save('mindmap.pdf');
-  };
 
-  const loaded = loadState();
-  if (!loaded) root = createNode(null, '');
+    inputEl.addEventListener('blur', () => {
+      if (suppressBlur || !document.contains(inputEl)) return;
+      if (activeEditId !== n.id) return;
+      confirmEdit(n.id);
+    });
+
+    n.children.forEach(cid => { if (nodes[cid]) buildNode(nodes[cid]); });
+  }
+
+  if (root) buildNode(root);
+  drawLines();
+}
+
+// ─── Drag helpers ─────────────────────────────────────────────────────────────
+function updateDropTarget(cx, cy) {
+  clearDropHighlights();
+  const rect = mapContainer.getBoundingClientRect();
+  const mx = (cx - rect.left) / scale;
+  const my = (cy - rect.top)  / scale;
+
+  let best = null, bestDist = Infinity;
+  Object.values(nodes).forEach(n => {
+    if (n.id === dragNodeId || isDescendant(dragNodeId, n.id)) return;
+    const pos = nodePos[n.id];
+    if (!pos) return;
+    const dx = mx - (pos.x + 30), dy = my - (pos.y + NODE_H / 2);
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 80 && dist < bestDist) { bestDist = dist; best = n.id; }
+  });
+
+  dropTargetId = best;
+  if (best && nodeEls[best]) nodeEls[best].el.classList.add('drop-target');
+}
+
+function clearDropHighlights() {
+  document.querySelectorAll('.drop-target').forEach(e => e.classList.remove('drop-target'));
+}
+
+function isDescendant(ancestorId, nodeId) {
+  if (nodeId == null) return false;
+  if (nodeId === ancestorId) return true;
+  const n = nodes[nodeId];
+  if (!n || n.parentId == null) return false;
+  return isDescendant(ancestorId, n.parentId);
+}
+
+function commitDrop() {
+  if (!dragNodeId || !dropTargetId || dragNodeId === dropTargetId) return;
+  const dragN = nodes[dragNodeId];
+  if (!dragN) return;
+  pushUndo();
+  if (dragN.parentId != null && nodes[dragN.parentId]) {
+    const arr = nodes[dragN.parentId].children;
+    arr.splice(arr.indexOf(dragNodeId), 1);
+  }
+  dragN.parentId = dropTargetId;
+  nodes[dropTargetId].children.push(dragNodeId);
   renderAll();
-  updateTransform();
-  if (!loaded) setTimeout(() => startEdit(root.id), 80);
+}
 
-})();
+function rerenderPositionsOnly() {
+  if (isRendering) return;
+  Object.keys(nodePos).forEach(k => delete nodePos[k]);
+  layoutTree();
+  Object.values(nodes).forEach(n => {
+    const pos = nodePos[n.id]; const refs = nodeEls[n.id];
+    if (!pos || !refs) return;
+    refs.el.style.left = pos.x + 'px';
+    refs.el.style.top  = pos.y + 'px';
+  });
+  drawLines();
+}
+
+// ─── Lines ────────────────────────────────────────────────────────────────────
+function drawLines() {
+  svgLayer.innerHTML = '';
+  const G = 16, RO = 25;
+
+  Object.values(nodes).forEach(n => {
+    if (!n.children.length) return;
+    const pPos = nodePos[n.id];
+    if (!pPos) return;
+    const els = nodeEls[n.id];
+
+    let labelW;
+    if (activeEditId === n.id && els && els.inputEl.style.display !== 'none') {
+      labelW = els.inputEl.offsetWidth || measureText(els.inputEl.value);
+    } else {
+      labelW = els ? (els.labelEl.offsetWidth || measureText(n.label)) : measureText(n.label);
+    }
+
+    const firstPos = nodePos[n.children[0]];
+    const lastPos  = nodePos[n.children[n.children.length - 1]];
+    if (!firstPos || !lastPos) return;
+
+    const railX = firstPos.x - RO;
+    const stubX = pPos.x + labelW + G;
+    const pY    = pPos.y + NODE_H / 2;
+    const firstY= firstPos.y + NODE_H / 2;
+    const lastY = lastPos.y  + NODE_H / 2;
+    const railTop = Math.min(pY, firstY), railBottom = lastY;
+
+    let d;
+    if (n.children.length === 1 && firstY === pY) {
+      d = `M ${stubX} ${pY} H ${firstPos.x - G}`;
+    } else {
+      d = `M ${stubX} ${pY} H ${railX} V ${railBottom}`;
+      if (railTop < pY) d = `M ${stubX} ${pY} H ${railX} V ${railTop} M ${railX} ${pY} V ${railBottom}`;
+    }
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('class', 'map-line');
+    path.setAttribute('d', d);
+    svgLayer.appendChild(path);
+
+    n.children.forEach(cid => {
+      if (n.children.length === 1 && firstY === pY) return;
+      const cPos = nodePos[cid];
+      if (!cPos) return;
+      const branch = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      branch.setAttribute('class', 'map-line');
+      branch.setAttribute('d', `M ${railX} ${cPos.y + NODE_H/2} H ${cPos.x - G}`);
+      svgLayer.appendChild(branch);
+    });
+  });
+}
+
+// ─── Edit ─────────────────────────────────────────────────────────────────────
+function startEdit(id) {
+  const els = nodeEls[id];
+  if (!els) return;
+  activeEditId = id;
+  nodes[id]._originalLabel = nodes[id].label;
+  els.el.classList.add('is-editing');
+  els.inputEl.style.display = 'inline-block';
+  els.inputEl.value = nodes[id]?.label || '';
+  els.inputEl.style.width = Math.max(50, Math.max(4, els.inputEl.value.length) * 8.5 + 16) + 'px';
+  setTimeout(() => { els.inputEl.focus(); els.inputEl.select(); }, 30);
+}
+
+function confirmEdit(id) {
+  if (activeEditId === id) activeEditId = null;
+  const els = nodeEls[id];
+  if (!els) return;
+  const { el, labelEl, inputEl } = els;
+  if (inputEl.style.display === 'none') return;
+  const val = inputEl.value.trim();
+  const n = nodes[id];
+  if (!n) return;
+  if (!val && n.parentId == null && Object.keys(nodes).length === 1) {
+    setTimeout(() => inputEl.focus(), 10); return;
+  }
+  if (!val && n.parentId != null) {
+    inputEl.style.display = 'none'; el.classList.remove('is-editing');
+    if (n._originalLabel !== undefined) { n.label = n._originalLabel; delete n._originalLabel; }
+    deleteNode(id); renderAll(); return;
+  }
+  pushUndo();
+  n.label = val;
+  if (n._originalLabel !== undefined) delete n._originalLabel;
+  labelEl.textContent = val || 'type here…';
+  labelEl.className = 'node-label' + (!val ? ' placeholder' : '');
+  el.classList.remove('is-editing');
+  inputEl.style.display = 'none';
+  renderAll();
+}
+
+function cancelEdit(id) {
+  if (activeEditId === id) activeEditId = null;
+  const n = nodes[id];
+  if (!n) return;
+  if (n._originalLabel !== undefined) { n.label = n._originalLabel; delete n._originalLabel; }
+  if (!n.label && n.parentId != null) { deleteNode(id); renderAll(); return; }
+  const els = nodeEls[id];
+  if (!els) return;
+  els.el.classList.remove('is-editing');
+  els.inputEl.style.display = 'none';
+  rerenderPositionsOnly();
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+let isRendering = false;
+function renderAll() {
+  if (isRendering) return;
+  isRendering = true;
+  suppressBlur = true; // block stale blur events during DOM rebuild
+  Object.keys(nodePos).forEach(k => delete nodePos[k]);
+  layoutTree(); buildDOM(); saveState();
+  suppressBlur = false;
+  isRendering = false;
+}
+
+// ─── Pan / Zoom ───────────────────────────────────────────────────────────────
+let tx = 100, ty = 80, scale = 1;
+let isPanning = false, panStart = null;
+
+function updateTransform() {
+  mapContainer.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
+}
+
+const canvasWrap = document.getElementById('canvas-wrap');
+let saveDebounceTimer = null;
+function saveDebounced() {
+  clearTimeout(saveDebounceTimer);
+  saveDebounceTimer = setTimeout(saveState, 300);
+}
+
+canvasWrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const delta = Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 100);
+  const f = 1 - delta * 0.0008;
+  const r = canvasWrap.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  tx = mx - (mx - tx) * f; ty = my - (my - ty) * f;
+  scale = Math.max(0.15, Math.min(4, scale * f));
+  updateTransform(); saveDebounced();
+}, { passive: false });
+
+canvasWrap.addEventListener('mousedown', e => {
+  if (e.target.closest('.node-el')) return;
+  isPanning = true;
+  panStart = { x: e.clientX - tx, y: e.clientY - ty };
+  canvasWrap.style.cursor = 'grabbing';
+});
+window.addEventListener('mousemove', e => {
+  if (!isPanning) return;
+  tx = e.clientX - panStart.x; ty = e.clientY - panStart.y; updateTransform();
+});
+window.addEventListener('mouseup', () => {
+  if (isPanning) { isPanning = false; canvasWrap.style.cursor = ''; saveState(); }
+});
+
+function zoomIn()    { scale = Math.min(4, scale * 1.2); updateTransform(); saveState(); }
+function zoomOut()   { scale = Math.max(0.15, scale / 1.2); updateTransform(); saveState(); }
+function resetZoom() { tx = 100; ty = 80; scale = 1; updateTransform(); saveState(); }
+
+// ─── Persistence ──────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'mindmap_v2';
+function saveState() {
+  if (isUndoRedo) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      nodes: Object.values(nodes).map(n => ({
+        id: n.id, label: n.label, children: [...n.children], parentId: n.parentId
+      })),
+      rootId: root?.id, idCounter, tx, ty, scale
+    }));
+  } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!data?.nodes?.length) return false;
+    data.nodes.forEach(n => { nodes[n.id] = { ...n, children: [] }; });
+    data.nodes.forEach(n => {
+      if (nodes[n.id]) nodes[n.id].children = n.children.filter(cid => nodes[cid]);
+    });
+    idCounter = data.idCounter || data.nodes.reduce((m, n) => Math.max(m, n.id), 0);
+    const rootNode = nodes[data.rootId];
+    if (!rootNode) return false;
+    root = rootNode;
+    tx = data.tx ?? 100; ty = data.ty ?? 80; scale = data.scale ?? 1;
+    return true;
+  } catch(e) { return false; }
+}
+
+function startOver(e) {
+  if (!e.ctrlKey) return;
+  pushUndo();
+  Object.keys(nodes).forEach(k => delete nodes[k]);
+  idCounter = 0; root = createNode(null, '');
+  tx = 100; ty = 80; scale = 1;
+  updateTransform(); renderAll();
+}
+
+const loaded = loadState();
+if (!loaded) { root = createNode(null, ''); }
+renderAll(); updateTransform();
+if (!loaded) { setTimeout(() => startEdit(root.id), 80); }
+updateUndoButtons();
 </script>
+
+<script>
+// ─── Vector SVG export ────────────────────────────────────────────────────────
+function buildVectorSVG({ transparent = false } = {}) {
+  const PADDING = 60;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  Object.values(nodes).forEach(n => {
+    const pos = nodePos[n.id]; if (!pos) return;
+    const w = measureText(n.label || 'type here…');
+    minX = Math.min(minX, pos.x); minY = Math.min(minY, pos.y);
+    maxX = Math.max(maxX, pos.x + w); maxY = Math.max(maxY, pos.y + NODE_H);
+  });
+
+  const W = maxX - minX + PADDING * 2, H = maxY - minY + PADDING * 2;
+  const ox = -minX + PADDING, oy = -minY + PADDING;
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  svg.setAttribute('width', W); svg.setAttribute('height', H);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  if (!transparent) {
+    const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    bg.setAttribute('width', '100%'); bg.setAttribute('height', '100%');
+    bg.setAttribute('fill', '#f5f4f0'); svg.appendChild(bg);
+  }
+
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.setAttribute('transform', `translate(${ox},${oy})`);
+  const G = 16, RO = 25;
+
+  Object.values(nodes).forEach(n => {
+    if (!n.children.length) return;
+    const pPos = nodePos[n.id]; if (!pPos) return;
+    const labelW = measureText(n.label);
+    const firstPos = nodePos[n.children[0]];
+    const lastPos  = nodePos[n.children[n.children.length - 1]];
+    if (!firstPos || !lastPos) return;
+
+    const railX = firstPos.x - RO, stubX = pPos.x + labelW + G;
+    const pY = pPos.y + NODE_H/2, firstY = firstPos.y + NODE_H/2, lastY = lastPos.y + NODE_H/2;
+    const railTop = Math.min(pY, firstY), railBottom = lastY;
+
+    let d;
+    if (n.children.length === 1 && firstY === pY) {
+      d = `M ${stubX} ${pY} H ${firstPos.x - G}`;
+    } else {
+      d = `M ${stubX} ${pY} H ${railX} V ${railBottom}`;
+      if (railTop < pY) d = `M ${stubX} ${pY} H ${railX} V ${railTop} M ${railX} ${pY} V ${railBottom}`;
+    }
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('stroke', '#1a1a1a'); path.setAttribute('stroke-width', '1');
+    path.setAttribute('stroke-linecap', 'square'); path.setAttribute('stroke-linejoin', 'miter');
+    path.setAttribute('fill', 'none'); path.setAttribute('d', d);
+    g.appendChild(path);
+
+    n.children.forEach(cid => {
+      if (n.children.length === 1 && firstY === pY) return;
+      const cPos = nodePos[cid]; if (!cPos) return;
+      const branch = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      branch.setAttribute('stroke', '#1a1a1a'); branch.setAttribute('stroke-width', '1');
+      branch.setAttribute('stroke-linecap', 'square'); branch.setAttribute('fill', 'none');
+      branch.setAttribute('d', `M ${railX} ${cPos.y + NODE_H/2} H ${cPos.x - G}`);
+      g.appendChild(branch);
+    });
+  });
+
+  Object.values(nodes).forEach(n => {
+    const pos = nodePos[n.id]; if (!pos) return;
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', pos.x); text.setAttribute('y', pos.y + 15);
+    text.setAttribute('font-family', 'JetBrains Mono, monospace');
+    text.setAttribute('font-size', '13'); text.setAttribute('font-weight', '400');
+    text.setAttribute('fill', n.label ? '#1a1a1a' : '#bbb');
+    text.setAttribute('letter-spacing', '0.01em');
+    text.textContent = n.label || (n.parentId == null ? 'type here…' : '…');
+    g.appendChild(text);
+  });
+
+  svg.appendChild(g);
+  return { svg, W, H };
+}
+
+function exportSVG() {
+  const { svg } = buildVectorSVG({ transparent: false });
+  const name = (root?.label || 'mindmap').replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+  const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name + '.svg'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+const RASTER_SCALE = 9;
+function setProgress(pct, label) {
+  document.getElementById('export-progress-bar').style.width = pct + '%';
+  document.getElementById('export-label').textContent = label;
+}
+
+async function exportRaster(format) {
+  const overlay = document.getElementById('export-overlay');
+  overlay.classList.add('visible');
+  setProgress(0, `exporting ${format}…`);
+  await new Promise(r => setTimeout(r, 60));
+
+  const isPNG = format === 'png';
+  const { svg, W, H } = buildVectorSVG({ transparent: isPNG });
+  setProgress(15, 'loading font…');
+  await new Promise(r => setTimeout(r, 30));
+
+  let fontFace = '';
+  try {
+    const fontResp = await fetch(
+      'https://fonts.gstatic.com/s/jetbrainsmono/v18/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTOlOTk6OThhvAWV8.woff2'
+    );
+    if (fontResp.ok) {
+      const buf = await fontResp.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const b64 = btoa(binary);
+      fontFace = `<defs><style>@font-face{font-family:'JetBrains Mono';font-weight:400;src:url('data:font/woff2;base64,${b64}') format('woff2');}</style></defs>`;
+    }
+  } catch(_) {}
+
+  setProgress(35, 'rendering svg…');
+  await new Promise(r => setTimeout(r, 30));
+
+  let svgStr = new XMLSerializer().serializeToString(svg);
+  if (fontFace) svgStr = svgStr.replace(/<svg([^>]*)>/, `<svg$1>${fontFace}`);
+
+  const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+  const svgUrl  = URL.createObjectURL(svgBlob);
+  const img = new Image();
+  img.width  = W * RASTER_SCALE;
+  img.height = H * RASTER_SCALE;
+
+  setProgress(55, 'drawing canvas…');
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = svgUrl; });
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = W * RASTER_SCALE; canvas.height = H * RASTER_SCALE;
+  const ctx = canvas.getContext('2d');
+
+  setProgress(75, 'compositing…');
+  await new Promise(r => setTimeout(r, 30));
+
+  if (!isPNG) { ctx.fillStyle = '#f5f4f0'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  URL.revokeObjectURL(svgUrl);
+
+  setProgress(90, 'encoding…');
+  await new Promise(r => setTimeout(r, 30));
+
+  const mimeType = isPNG ? 'image/png' : 'image/jpeg';
+  const dataUrl  = canvas.toDataURL(mimeType, isPNG ? undefined : 0.95);
+  const name = (root?.label || 'mindmap').replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+  const a = document.createElement('a');
+  a.href = dataUrl; a.download = `${name}.${format}`; a.click();
+
+  setProgress(100, 'done ✓');
+  await new Promise(r => setTimeout(r, 500));
+  overlay.classList.remove('visible');
+  setProgress(0, '');
+}
+</script>
+</body>
+</html>
