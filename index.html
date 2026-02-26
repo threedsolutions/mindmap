@@ -1,0 +1,645 @@
+<style>
+  #mindmap-root {
+    width: 100%;
+    height: 600px;
+    position: relative;
+    overflow: hidden;
+    background: #f5f4f0;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: default;
+    user-select: none;
+  }
+
+  #mindmap-root * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  #mm-canvas-wrap {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #mm-map-container {
+    position: absolute;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+    z-index: 2;
+  }
+
+  #mm-svg-layer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 9999px; height: 9999px;
+    pointer-events: none;
+    z-index: 1;
+    overflow: visible;
+  }
+
+  #mindmap-root .mm-node-el {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    height: 22px;
+    white-space: nowrap;
+  }
+
+  #mindmap-root .mm-node-label {
+    font-size: 13px;
+    font-weight: 400;
+    color: #1a1a1a;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  #mindmap-root .mm-node-label.placeholder { color: #bbb; cursor: text; }
+
+  #mindmap-root .mm-node-input {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 400;
+    color: #1a1a1a;
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 0;
+    min-width: 50px;
+    width: 80px;
+    letter-spacing: 0.01em;
+    user-select: text;
+  }
+
+  #mindmap-root .mm-node-del {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px; height: 14px;
+    border: none;
+    background: transparent;
+    color: #ccc;
+    font-size: 13px;
+    cursor: pointer;
+    margin-left: 1px;
+    margin-right: 1px;
+    flex-shrink: 0;
+    transition: color 0.1s;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #mindmap-root .mm-node-el:hover .mm-node-del { opacity: 1; pointer-events: auto; }
+  #mindmap-root .mm-node-del:hover { color: #d44; }
+
+  #mindmap-root .mm-map-line {
+    stroke: #1a1a1a;
+    stroke-width: 0.75px;
+    fill: none;
+  }
+
+  #mm-controls {
+    position: absolute;
+    bottom: 16px; right: 16px;
+    display: flex; gap: 6px;
+    z-index: 100;
+  }
+
+  #mindmap-root .mm-ctrl-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #888;
+    background: #f5f4f0;
+    border: 1px solid #d0ceca;
+    padding: 5px 12px;
+    cursor: pointer;
+    border-radius: 2px;
+    letter-spacing: 0.02em;
+    transition: border-color 0.1s, color 0.1s;
+  }
+  #mindmap-root .mm-ctrl-btn:hover { border-color: #333; color: #333; }
+  #mm-btn-start-over { color: #c88 !important; border-color: #ddc8c8 !important; }
+  #mm-btn-start-over:hover { border-color: #d44 !important; color: #d44 !important; }
+
+  #mm-hint {
+    position: absolute;
+    bottom: 16px; left: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #c8c7c2;
+    z-index: 100;
+    line-height: 1.9;
+    pointer-events: none;
+  }
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+
+<div id="mindmap-root">
+  <div id="mm-canvas-wrap">
+    <div id="mm-map-container">
+      <svg id="mm-svg-layer"></svg>
+    </div>
+  </div>
+  <div id="mm-controls">
+    <button class="mm-ctrl-btn" onclick="mmExportPDF()">pdf</button>
+    <button class="mm-ctrl-btn" onclick="mmResetZoom()">reset view</button>
+    <button class="mm-ctrl-btn" onclick="mmZoomOut()">−</button>
+    <button class="mm-ctrl-btn" onclick="mmZoomIn()">+</button>
+    <button class="mm-ctrl-btn" id="mm-btn-start-over" onclick="mmStartOver(event)">start over</button>
+  </div>
+  <div id="mm-hint">
+    <div>double-click → edit &nbsp; tab → child &nbsp; enter → sibling &nbsp; esc → cancel</div>
+    <div>scroll → zoom &nbsp; drag → pan</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+(function() {
+  // ─── Constants ──────────────────────────────────────────────────────────────
+  const COL_GAP   = 80;
+  const ROW_H     = 22;
+  const GROUP_GAP = 65;
+  const NODE_H    = 22;
+  const STORAGE_KEY = 'mindmap_v1';
+
+  const _mc = document.createElement('canvas');
+  const _mx = _mc.getContext('2d');
+  _mx.font = '400 13px "JetBrains Mono", monospace';
+  function measureText(label) {
+    if (!label) return 40;
+    return Math.ceil(_mx.measureText(label).width);
+  }
+
+  // ─── Storage guard ──────────────────────────────────────────────────────────
+  const storageOK = (() => {
+    try { localStorage.setItem('_mm_t','1'); localStorage.removeItem('_mm_t'); return true; }
+    catch(e) { return false; }
+  })();
+
+  // ─── Tree state ─────────────────────────────────────────────────────────────
+  let idCounter = 0;
+  const uid = () => ++idCounter;
+  let root = null;
+  const nodes = {};
+
+  function createNode(parentId, label = '') {
+    const n = { id: uid(), label, children: [], parentId: parentId ?? null };
+    nodes[n.id] = n;
+    if (parentId != null && nodes[parentId]) nodes[parentId].children.push(n.id);
+    return n;
+  }
+
+  function deleteNode(id) {
+    const n = nodes[id];
+    if (!n) return;
+    if (n.parentId != null && nodes[n.parentId]) {
+      const arr = nodes[n.parentId].children;
+      arr.splice(arr.indexOf(id), 1);
+    }
+    [...n.children].forEach(deleteNode);
+    delete nodes[id];
+  }
+
+  function insertSiblingAfter(id) {
+    const n = nodes[id];
+    if (!n || n.parentId == null) return null;
+    const parent = nodes[n.parentId];
+    const sib = { id: uid(), label: '', children: [], parentId: n.parentId };
+    nodes[sib.id] = sib;
+    const idx = parent.children.indexOf(id);
+    parent.children.splice(idx + 1, 0, sib.id);
+    return sib;
+  }
+
+  // ─── Layout ─────────────────────────────────────────────────────────────────
+  const nodePos = {};
+
+  function subtreeHeight(id) {
+    const n = nodes[id];
+    if (!n || n.children.length === 0) return ROW_H;
+    const total = n.children.reduce((s, cid) => s + subtreeHeight(cid), 0);
+    return Math.max(GROUP_GAP, total);
+  }
+
+  function layoutTree() {
+    const maxW = {};
+    function measureDepths(id, depth) {
+      const n = nodes[id];
+      if (!n) return;
+      const liveLabel = (activeEditId === id && nodeEls[id])
+        ? nodeEls[id].inputEl.value : n.label;
+      const w = measureText(liveLabel);
+      if (maxW[depth] === undefined || w > maxW[depth]) maxW[depth] = w;
+      n.children.forEach(cid => measureDepths(cid, depth + 1));
+    }
+    measureDepths(root.id, 0);
+
+    const xAtDepth = {};
+    let cx = 0;
+    const maxDepth = Math.max(...Object.keys(maxW).map(Number));
+    for (let d = 0; d <= maxDepth; d++) {
+      xAtDepth[d] = cx;
+      cx += (maxW[d] || 0) + COL_GAP;
+    }
+
+    function assign(id, depth, y) {
+      nodePos[id] = { x: xAtDepth[depth], y };
+      let cy = y;
+      nodes[id].children.forEach(cid => {
+        assign(cid, depth + 1, cy);
+        cy += subtreeHeight(cid);
+      });
+    }
+    assign(root.id, 0, 0);
+  }
+
+  // ─── DOM ────────────────────────────────────────────────────────────────────
+  const mapContainer = document.getElementById('mm-map-container');
+  const svgLayer     = document.getElementById('mm-svg-layer');
+  const canvasWrap   = document.getElementById('mm-canvas-wrap');
+  const nodeEls      = {};
+
+  let suppressBlur = false;
+  let activeEditId = null;
+
+  function buildDOM() {
+    mapContainer.querySelectorAll('.mm-node-el').forEach(e => e.remove());
+    svgLayer.innerHTML = '';
+    Object.keys(nodeEls).forEach(k => delete nodeEls[k]);
+
+    function buildNode(n) {
+      const pos = nodePos[n.id];
+      if (!pos) return;
+
+      const el = document.createElement('div');
+      el.className = 'mm-node-el';
+      el.dataset.id = n.id;
+      el.style.left = pos.x + 'px';
+      el.style.top  = pos.y + 'px';
+
+      const labelEl = document.createElement('span');
+      labelEl.className = 'mm-node-label' + (n.label === '' ? ' placeholder' : '');
+      labelEl.textContent = n.label !== '' ? n.label : (n.parentId == null ? 'type here…' : '…');
+
+      const inputEl = document.createElement('input');
+      inputEl.className = 'mm-node-input';
+      inputEl.type = 'text';
+      inputEl.value = n.label;
+      inputEl.style.display = 'none';
+
+      const delBtn = document.createElement('span');
+      delBtn.className = 'mm-node-del';
+      delBtn.innerHTML = '×';
+
+      el.appendChild(labelEl);
+      el.appendChild(inputEl);
+
+      if (n.parentId != null) {
+        delBtn.addEventListener('mousedown', () => { suppressBlur = true; });
+        delBtn.addEventListener('click', () => {
+          setTimeout(() => { suppressBlur = false; }, 0);
+          deleteNode(n.id);
+          renderAll();
+        });
+        el.appendChild(delBtn);
+      }
+
+      nodeEls[n.id] = { el, labelEl, inputEl };
+      mapContainer.appendChild(el);
+
+      labelEl.addEventListener('dblclick', () => startEdit(n.id));
+      if (n.label === '') labelEl.addEventListener('click', () => startEdit(n.id));
+
+      inputEl.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+          e.preventDefault(); e.stopPropagation();
+          cancelEdit(n.id);
+        } else if (e.key === 'Tab') {
+          e.preventDefault(); e.stopPropagation();
+          suppressBlur = true;
+          n.label = inputEl.value.trim() || n.label;
+          activeEditId = null;
+          suppressBlur = false;
+          const child = createNode(n.id, '');
+          renderAll();
+          requestAnimationFrame(() => startEdit(child.id));
+        } else if (e.key === 'Enter') {
+          e.preventDefault(); e.stopPropagation();
+          suppressBlur = true;
+          const val = inputEl.value.trim();
+          activeEditId = null;
+          if (!val && n.parentId != null) {
+            suppressBlur = false;
+            deleteNode(n.id); renderAll(); return;
+          }
+          n.label = val || n.label;
+          suppressBlur = false;
+          if (n.parentId != null) {
+            const sib = insertSiblingAfter(n.id);
+            if (sib) { renderAll(); requestAnimationFrame(() => startEdit(sib.id)); }
+          } else { renderAll(); }
+        } else { e.stopPropagation(); }
+      });
+
+      inputEl.addEventListener('input', () => {
+        inputEl.style.width = Math.max(50, inputEl.value.length * 8.5 + 16) + 'px';
+        n.label = inputEl.value;
+        rerenderPositionsOnly();
+      });
+
+      inputEl.addEventListener('blur', () => {
+        if (suppressBlur) return;
+        if (!document.contains(inputEl)) return;
+        confirmEdit(n.id);
+      });
+
+      n.children.forEach(cid => { if (nodes[cid]) buildNode(nodes[cid]); });
+    }
+
+    if (root) buildNode(root);
+    drawLines();
+  }
+
+  // ─── Live reposition ────────────────────────────────────────────────────────
+  function rerenderPositionsOnly() {
+    if (isRendering) return;
+    Object.keys(nodePos).forEach(k => delete nodePos[k]);
+    layoutTree();
+    Object.values(nodes).forEach(n => {
+      const pos = nodePos[n.id];
+      const refs = nodeEls[n.id];
+      if (!pos || !refs) return;
+      refs.el.style.left = pos.x + 'px';
+      refs.el.style.top  = pos.y + 'px';
+    });
+    drawLines();
+  }
+
+  // ─── Lines ──────────────────────────────────────────────────────────────────
+  function drawLines() {
+    svgLayer.innerHTML = '';
+    const GAP = 16, RAIL = 25;
+
+    Object.values(nodes).forEach(n => {
+      if (!n.children.length) return;
+      const pPos = nodePos[n.id];
+      if (!pPos) return;
+      const els = nodeEls[n.id];
+
+      let labelW;
+      if (activeEditId === n.id && els && els.inputEl.style.display !== 'none') {
+        labelW = els.inputEl.offsetWidth || measureText(els.inputEl.value);
+      } else {
+        labelW = els ? (els.labelEl.offsetWidth || measureText(n.label)) : measureText(n.label);
+      }
+
+      const firstPos = nodePos[n.children[0]];
+      const lastPos  = nodePos[n.children[n.children.length - 1]];
+      if (!firstPos || !lastPos) return;
+
+      const railX = firstPos.x - RAIL;
+      const x1 = pPos.x + labelW + GAP;
+      const y1 = pPos.y + NODE_H / 2;
+
+      const stub = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      stub.setAttribute('class', 'mm-map-line');
+      stub.setAttribute('x1', x1); stub.setAttribute('y1', y1);
+      stub.setAttribute('x2', railX); stub.setAttribute('y2', y1);
+      svgLayer.appendChild(stub);
+
+      const firstY = firstPos.y + NODE_H / 2;
+      const lastY  = lastPos.y  + NODE_H / 2;
+
+      if (n.children.length > 1 || firstY !== y1) {
+        const rail = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        rail.setAttribute('class', 'mm-map-line');
+        rail.setAttribute('x1', railX); rail.setAttribute('y1', Math.min(y1, firstY));
+        rail.setAttribute('x2', railX); rail.setAttribute('y2', lastY);
+        svgLayer.appendChild(rail);
+      }
+
+      n.children.forEach(cid => {
+        const cPos = nodePos[cid];
+        if (!cPos) return;
+        const cy = cPos.y + NODE_H / 2;
+        const branch = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        branch.setAttribute('class', 'mm-map-line');
+        branch.setAttribute('x1', railX); branch.setAttribute('y1', cy);
+        branch.setAttribute('x2', cPos.x - GAP); branch.setAttribute('y2', cy);
+        svgLayer.appendChild(branch);
+      });
+    });
+  }
+
+  // ─── Edit ───────────────────────────────────────────────────────────────────
+  function startEdit(id) {
+    const els = nodeEls[id];
+    if (!els) return;
+    activeEditId = id;
+    nodes[id]._originalLabel = nodes[id].label;
+    els.labelEl.style.display = 'none';
+    els.inputEl.style.display = 'inline-block';
+    els.inputEl.value = nodes[id]?.label || '';
+    els.inputEl.style.width = Math.max(50, Math.max(4, els.inputEl.value.length) * 8.5 + 16) + 'px';
+    setTimeout(() => { els.inputEl.focus(); els.inputEl.select(); }, 30);
+  }
+
+  function confirmEdit(id) {
+    if (activeEditId === id) activeEditId = null;
+    const els = nodeEls[id];
+    if (!els) return;
+    const { labelEl, inputEl } = els;
+    if (inputEl.style.display === 'none') return;
+    const val = inputEl.value.trim();
+    const n = nodes[id];
+    if (!n) return;
+
+    if (!val && n.parentId == null && Object.keys(nodes).length === 1) {
+      setTimeout(() => inputEl.focus(), 10); return;
+    }
+    if (!val && n.parentId != null) {
+      inputEl.style.display = 'none';
+      labelEl.style.display = '';
+      if (n._originalLabel !== undefined) { n.label = n._originalLabel; delete n._originalLabel; }
+      deleteNode(id); renderAll(); return;
+    }
+
+    n.label = val;
+    if (n._originalLabel !== undefined) delete n._originalLabel;
+    labelEl.textContent = val || 'type here…';
+    labelEl.className = 'mm-node-label' + (!val ? ' placeholder' : '');
+    labelEl.style.display = '';
+    inputEl.style.display = 'none';
+    renderAll();
+  }
+
+  function cancelEdit(id) {
+    if (activeEditId === id) activeEditId = null;
+    const n = nodes[id];
+    if (!n) return;
+    if (n._originalLabel !== undefined) { n.label = n._originalLabel; delete n._originalLabel; }
+    if (!n.label && n.parentId != null) { deleteNode(id); renderAll(); return; }
+    const els = nodeEls[id];
+    if (!els) return;
+    els.labelEl.style.display = '';
+    els.inputEl.style.display = 'none';
+    rerenderPositionsOnly();
+  }
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
+  let isRendering = false;
+  function renderAll() {
+    if (isRendering) return;
+    isRendering = true;
+    suppressBlur = true;
+    Object.keys(nodePos).forEach(k => delete nodePos[k]);
+    layoutTree();
+    buildDOM();
+    saveState();
+    suppressBlur = false;
+    isRendering = false;
+  }
+
+  // ─── Pan / Zoom ─────────────────────────────────────────────────────────────
+  let tx = 40, ty = 40, scale = 1;
+  let isPanning = false, panStart = null;
+
+  function updateTransform() {
+    mapContainer.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
+  }
+
+  let saveDebounceTimer = null;
+  function saveDebounced() {
+    clearTimeout(saveDebounceTimer);
+    saveDebounceTimer = setTimeout(saveState, 300);
+  }
+
+  canvasWrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    const delta = Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 100);
+    const f = 1 - delta * 0.0008;
+    const r = canvasWrap.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    tx = mx - (mx - tx) * f;
+    ty = my - (my - ty) * f;
+    scale = Math.max(0.15, Math.min(4, scale * f));
+    updateTransform(); saveDebounced();
+  }, { passive: false });
+
+  canvasWrap.addEventListener('mousedown', e => {
+    if (e.target.closest('.mm-node-el')) return;
+    isPanning = true;
+    panStart = { x: e.clientX - tx, y: e.clientY - ty };
+    canvasWrap.style.cursor = 'grabbing';
+  });
+  window.addEventListener('mousemove', e => {
+    if (!isPanning) return;
+    tx = e.clientX - panStart.x;
+    ty = e.clientY - panStart.y;
+    updateTransform();
+  });
+  window.addEventListener('mouseup', () => {
+    if (isPanning) { isPanning = false; canvasWrap.style.cursor = ''; saveState(); }
+  });
+
+  window.mmZoomIn    = () => { scale = Math.min(4, scale * 1.2); updateTransform(); saveState(); };
+  window.mmZoomOut   = () => { scale = Math.max(0.15, scale / 1.2); updateTransform(); saveState(); };
+  window.mmResetZoom = () => { tx = 40; ty = 40; scale = 1; updateTransform(); saveState(); };
+
+  // ─── Persistence ────────────────────────────────────────────────────────────
+  function saveState() {
+    if (!storageOK) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        nodes: Object.values(nodes).map(n => ({
+          id: n.id, label: n.label, children: [...n.children], parentId: n.parentId
+        })),
+        rootId: root?.id, idCounter, tx, ty, scale
+      }));
+    } catch(e) {}
+  }
+
+  function loadState() {
+    if (!storageOK) return false;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (!data.nodes?.length) return false;
+      data.nodes.forEach(n => { nodes[n.id] = n; });
+      idCounter = data.idCounter || data.nodes.reduce((m, n) => Math.max(m, n.id), 0);
+      root = nodes[data.rootId] || nodes[data.nodes[0].id];
+      tx = data.tx ?? 40; ty = data.ty ?? 40; scale = data.scale ?? 1;
+      return true;
+    } catch(e) { return false; }
+  }
+
+  window.mmStartOver = (e) => {
+    if (!e.ctrlKey) return;
+    Object.keys(nodes).forEach(k => delete nodes[k]);
+    idCounter = 0;
+    root = createNode(null, '');
+    tx = 40; ty = 40; scale = 1;
+    updateTransform(); renderAll();
+  };
+
+  // ─── PDF Export ─────────────────────────────────────────────────────────────
+  window.mmExportPDF = async () => {
+    if (!Object.keys(nodePos).length) return;
+    const PADDING = 60;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    Object.values(nodes).forEach(n => {
+      const pos = nodePos[n.id];
+      if (!pos) return;
+      const els = nodeEls[n.id];
+      const w = els ? (els.labelEl.offsetWidth || 80) : 80;
+      minX = Math.min(minX, pos.x); minY = Math.min(minY, pos.y);
+      maxX = Math.max(maxX, pos.x + w); maxY = Math.max(maxY, pos.y + NODE_H);
+    });
+
+    const contentW = maxX - minX + PADDING * 2;
+    const contentH = maxY - minY + PADDING * 2;
+    const prevTx = tx, prevTy = ty, prevScale = scale;
+    tx = -minX + PADDING; ty = -minY + PADDING; scale = 1;
+    updateTransform();
+
+    const wrap = document.getElementById('mm-canvas-wrap');
+    const prevW = wrap.style.width, prevH = wrap.style.height;
+    wrap.style.width = contentW + 'px'; wrap.style.height = contentH + 'px';
+    document.getElementById('mm-controls').style.display = 'none';
+    document.getElementById('mm-hint').style.display = 'none';
+
+    await new Promise(r => requestAnimationFrame(r));
+
+    const canvas = await html2canvas(wrap, {
+      backgroundColor: '#f5f4f0', scale: 2, useCORS: true,
+      width: contentW, height: contentH, x: 0, y: 0,
+      scrollX: 0, scrollY: 0, windowWidth: contentW, windowHeight: contentH,
+    });
+
+    wrap.style.width = prevW; wrap.style.height = prevH;
+    document.getElementById('mm-controls').style.display = '';
+    document.getElementById('mm-hint').style.display = '';
+    tx = prevTx; ty = prevTy; scale = prevScale;
+    updateTransform();
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({
+      orientation: contentW > contentH ? 'landscape' : 'portrait',
+      unit: 'px', format: [contentW, contentH]
+    });
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, contentW, contentH);
+    pdf.save('mindmap.pdf');
+  };
+
+  // ─── Boot ───────────────────────────────────────────────────────────────────
+  const loaded = loadState();
+  if (!loaded) root = createNode(null, '');
+  renderAll();
+  updateTransform();
+  if (!loaded) setTimeout(() => startEdit(root.id), 80);
+
+})();
+</script>
