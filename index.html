@@ -9,10 +9,10 @@
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  ::selection { background: #d0ceca; color: #1a1a1a; }
+  ::selection { background: #3a3a3a; color: #c8c8c8; }
 
   body {
-    background: #f5f4f0;
+    background: #1a1a1a;
     font-family: 'JetBrains Mono', monospace;
     overflow: hidden;
     width: 100vw; height: 100vh;
@@ -57,7 +57,7 @@
   .node-label {
     font-size: 13px;
     font-weight: 400;
-    color: #1a1a1a;
+    color: #c8c8c8;
     letter-spacing: 0.01em;
     cursor: pointer;
     white-space: nowrap;
@@ -65,7 +65,7 @@
     border-radius: 2px;
     transition: background 0.1s;
   }
-  .node-label.placeholder { color: #bbb; cursor: text; }
+  .node-label.placeholder { color: #555; cursor: text; }
   .node-label.placeholder::after {
     content: '';
     animation: dots 1.5s infinite;
@@ -83,7 +83,7 @@
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
     font-weight: 400;
-    color: #1a1a1a;
+    color: #c8c8c8;
     background: transparent;
     border: none;
     outline: none;
@@ -102,7 +102,7 @@
     width: 14px; height: 14px;
     border: none;
     background: transparent;
-    color: #ccc;
+    color: #444;
     font-size: 13px;
     cursor: pointer;
     margin-left: 1px; margin-right: 1px;
@@ -121,20 +121,20 @@
     z-index: 999;
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
-    color: #1a1a1a;
-    background: #f5f4f0;
-    border: 1px solid #d0ceca;
+    color: #c8c8c8;
+    background: #1a1a1a;
+    border: 1px solid #3a3a3a;
     padding: 2px 8px;
     border-radius: 2px;
     display: none;
     white-space: nowrap;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
   }
 
-  .node-el.drop-target .node-label { background: #e0ddd6; }
+  .node-el.drop-target .node-label { background: #2e2e2e; }
 
   .map-line {
-    stroke: #1a1a1a;
+    stroke: #c8c8c8;
     stroke-width: 1px;
     fill: none;
     stroke-linecap: square;
@@ -152,9 +152,9 @@
   .ctrl-btn {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
-    color: #1a1a1a;
-    background: #f5f4f0;
-    border: 1px solid #d0ceca;
+    color: #c8c8c8;
+    background: #1a1a1a;
+    border: 1px solid #3a3a3a;
     padding: 5px 12px;
     cursor: pointer;
     border-radius: 2px;
@@ -162,10 +162,10 @@
     transition: border-color 0.1s, color 0.1s, opacity 0.15s;
     height: 28px;
   }
-  .ctrl-btn:hover { border-color: #1a1a1a; color: #1a1a1a; }
+  .ctrl-btn:hover { border-color: #c8c8c8; color: #c8c8c8; }
   .ctrl-btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
 
-  #btn-start-over { color: #c88; border-color: #ddc8c8; }
+  #btn-start-over { color: #c87; border-color: #5a3a3a; }
   #btn-start-over:hover { border-color: #d44; color: #d44; }
 
   #hint {
@@ -173,7 +173,7 @@
     bottom: 24px; left: 24px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 10px;
-    color: #1a1a1a;
+    color: #c8c8c8;
     z-index: 100;
     line-height: 1.9;
     pointer-events: none;
@@ -186,7 +186,7 @@
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(245,244,240,0.92);
+    background: rgba(26,26,26,0.92);
     z-index: 200;
     flex-direction: column;
     align-items: center;
@@ -194,17 +194,17 @@
     gap: 16px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
-    color: #888;
+    color: #666;
     letter-spacing: 0.04em;
   }
   #export-overlay.visible { display: flex; }
   #export-progress-wrap {
     width: 180px; height: 2px;
-    background: #ddd; border-radius: 1px; overflow: hidden;
+    background: #333; border-radius: 1px; overflow: hidden;
   }
   #export-progress-bar {
     height: 100%; width: 0%;
-    background: #1a1a1a;
+    background: #c8c8c8;
     transition: width 0.2s ease;
     border-radius: 1px;
   }
@@ -839,7 +839,7 @@ function buildVectorSVG({ transparent = false } = {}) {
   if (!transparent) {
     const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     bg.setAttribute('width', '100%'); bg.setAttribute('height', '100%');
-    bg.setAttribute('fill', '#f5f4f0'); svg.appendChild(bg);
+    bg.setAttribute('fill', '#1a1a1a'); svg.appendChild(bg);
   }
 
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -867,7 +867,7 @@ function buildVectorSVG({ transparent = false } = {}) {
     }
 
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('stroke', '#1a1a1a'); path.setAttribute('stroke-width', '1');
+    path.setAttribute('stroke', '#c8c8c8'); path.setAttribute('stroke-width', '1');
     path.setAttribute('stroke-linecap', 'square'); path.setAttribute('stroke-linejoin', 'miter');
     path.setAttribute('fill', 'none'); path.setAttribute('d', d);
     g.appendChild(path);
@@ -876,7 +876,7 @@ function buildVectorSVG({ transparent = false } = {}) {
       if (n.children.length === 1 && firstY === pY) return;
       const cPos = nodePos[cid]; if (!cPos) return;
       const branch = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      branch.setAttribute('stroke', '#1a1a1a'); branch.setAttribute('stroke-width', '1');
+      branch.setAttribute('stroke', '#c8c8c8'); branch.setAttribute('stroke-width', '1');
       branch.setAttribute('stroke-linecap', 'square'); branch.setAttribute('fill', 'none');
       branch.setAttribute('d', `M ${railX} ${cPos.y + NODE_H/2} H ${cPos.x - G}`);
       g.appendChild(branch);
@@ -889,7 +889,7 @@ function buildVectorSVG({ transparent = false } = {}) {
     text.setAttribute('x', pos.x); text.setAttribute('y', pos.y + 15);
     text.setAttribute('font-family', 'JetBrains Mono, monospace');
     text.setAttribute('font-size', '13'); text.setAttribute('font-weight', '400');
-    text.setAttribute('fill', n.label ? '#1a1a1a' : '#bbb');
+    text.setAttribute('fill', n.label ? '#c8c8c8' : '#555');
     text.setAttribute('letter-spacing', '0.01em');
     text.textContent = n.label || (n.parentId == null ? 'type here…' : '…');
     g.appendChild(text);
@@ -963,7 +963,7 @@ async function exportRaster(format) {
   setProgress(75, 'compositing…');
   await new Promise(r => setTimeout(r, 30));
 
-  if (!isPNG) { ctx.fillStyle = '#f5f4f0'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+  if (!isPNG) { ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   URL.revokeObjectURL(svgUrl);
 
