@@ -802,7 +802,21 @@ function buildDOM() {
     inputEl.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
         e.preventDefault(); e.stopPropagation();
-        cancelEdit(n.id);
+        const val = inputEl.value.trim();
+        if (!val) {
+          // No text — cancel and delete if it's a new empty node
+          cancelEdit(n.id);
+        } else {
+          // Has text — confirm and keep selection on this node
+          suppressBlur = true;
+          activeEditId = null;
+          pushUndo();
+          n.label = val;
+          if (n._originalLabel !== undefined) delete n._originalLabel;
+          const id = n.id;
+          renderAll();
+          selectNode(id);
+        }
       } else if (e.key === 'Tab') {
         e.preventDefault(); e.stopPropagation();
         const val = inputEl.value.trim();
