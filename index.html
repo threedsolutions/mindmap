@@ -939,7 +939,30 @@ window.addEventListener('mouseup', () => {
 
 function zoomIn()    { scale = Math.min(4, scale * 1.2); updateTransform(); saveState(); }
 function zoomOut()   { scale = Math.max(0.15, scale / 1.2); updateTransform(); saveState(); }
-function resetZoom() { tx = 100; ty = 80; scale = 1; updateTransform(); saveState(); }
+function resetZoom() {
+  const PADDING = 60;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  Object.values(nodes).forEach(n => {
+    const pos = nodePos[n.id]; if (!pos) return;
+    const w = measureText(n.label || '');
+    minX = Math.min(minX, pos.x);       minY = Math.min(minY, pos.y);
+    maxX = Math.max(maxX, pos.x + w);   maxY = Math.max(maxY, pos.y + NODE_H);
+  });
+  if (minX === Infinity) { tx = 100; ty = 80; scale = 1; updateTransform(); return; }
+
+  const treeW = maxX - minX, treeH = maxY - minY;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const fitScale = Math.min(
+    (vw - PADDING * 2) / treeW,
+    (vh - PADDING * 2) / treeH,
+    1
+  );
+  scale = fitScale;
+  tx = PADDING - minX * scale;
+  ty = PADDING - minY * scale;
+  updateTransform();
+  saveState();
+}
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 const STORAGE_KEY = 'mindmap_v2';
