@@ -954,8 +954,7 @@ function resetZoom() {
   const vw = window.innerWidth, vh = window.innerHeight;
   const fitScale = Math.min(
     (vw - PADDING * 2) / treeW,
-    (vh - PADDING * 2) / treeH,
-    1
+    (vh - PADDING - 150) / treeH
   );
   scale = fitScale;
   tx = PADDING - minX * scale;
