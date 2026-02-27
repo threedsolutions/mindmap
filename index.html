@@ -805,9 +805,10 @@ function buildDOM() {
         cancelEdit(n.id);
       } else if (e.key === 'Tab') {
         e.preventDefault(); e.stopPropagation();
-        // suppressBlur stays true — renderAll() will reset it
+        const val = inputEl.value.trim();
+        if (!val) return; // block child creation if parent is empty
         suppressBlur = true;
-        n.label = inputEl.value.trim() || n.label;
+        n.label = val;
         activeEditId = null;
         pushUndo();
         const child = createNode(n.id, '');
@@ -815,13 +816,11 @@ function buildDOM() {
         requestAnimationFrame(() => startEdit(child.id));
       } else if (e.key === 'Enter') {
         e.preventDefault(); e.stopPropagation();
-        suppressBlur = true;
         const val = inputEl.value.trim();
+        if (!val) return; // stay in edit if empty
+        suppressBlur = true;
         activeEditId = null;
-        if (!val && n.parentId != null) {
-          deleteNode(n.id); renderAll(); return;
-        }
-        n.label = val || n.label;
+        n.label = val;
         if (n.parentId != null) {
           pushUndo();
           const sib = insertSiblingAfter(n.id);
