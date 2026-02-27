@@ -940,25 +940,27 @@ window.addEventListener('mouseup', () => {
 function zoomIn()    { scale = Math.min(4, scale * 1.2); updateTransform(); saveState(); }
 function zoomOut()   { scale = Math.max(0.15, scale / 1.2); updateTransform(); saveState(); }
 function resetZoom() {
-  const PADDING = 60;
+  const PAD_X = 60, PAD_Y_TOP = 60, PAD_Y_BOT = 150;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   Object.values(nodes).forEach(n => {
     const pos = nodePos[n.id]; if (!pos) return;
     const w = measureText(n.label || '');
-    minX = Math.min(minX, pos.x);       minY = Math.min(minY, pos.y);
-    maxX = Math.max(maxX, pos.x + w);   maxY = Math.max(maxY, pos.y + NODE_H);
+    minX = Math.min(minX, pos.x);     minY = Math.min(minY, pos.y);
+    maxX = Math.max(maxX, pos.x + w); maxY = Math.max(maxY, pos.y + NODE_H);
   });
   if (minX === Infinity) { tx = 100; ty = 80; scale = 1; updateTransform(); return; }
 
   const treeW = maxX - minX, treeH = maxY - minY;
   const vw = window.innerWidth, vh = window.innerHeight;
-  const fitScale = Math.min(
-    (vw - PADDING * 2) / treeW,
-    (vh - PADDING - 150) / treeH
-  );
-  scale = fitScale;
-  tx = PADDING - minX * scale;
-  ty = PADDING - minY * scale;
+
+  const scaleX = (vw  - PAD_X * 2)            / treeW;
+  const scaleY = (vh  - PAD_Y_TOP - PAD_Y_BOT) / treeH;
+  scale = Math.min(scaleX, scaleY);
+
+  // Top-left aligned with padding
+  tx = PAD_X - minX * scale;
+  ty = PAD_Y_TOP - minY * scale;
+
   updateTransform();
   saveState();
 }
