@@ -394,6 +394,7 @@
       <div class="help-row"><span class="help-key">tab (in edit)</span><span class="help-desc">confirm and create child</span></div>
       <div class="help-row"><span class="help-key">escape (in edit)</span><span class="help-desc">cancel and revert changes</span></div>
       <div class="help-row"><span class="help-key">double click</span><span class="help-desc">open edit on any node</span></div>
+      <div class="help-row"><span class="help-key">del / backspace</span><span class="help-desc">delete selected node</span></div>
     </div>
 
     <div class="help-section">
@@ -595,6 +596,29 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     const overlay = document.getElementById('help-overlay');
     if (overlay.classList.contains('visible')) { toggleHelp(); return; }
+  }
+
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId && nodes[selectedNodeId]) {
+    const n = nodes[selectedNodeId];
+    if (n.parentId != null) { // don't delete root
+      e.preventDefault();
+      pushUndo();
+      const parentChildren = nodes[n.parentId]?.children;
+      const idx = parentChildren ? parentChildren.indexOf(selectedNodeId) : -1;
+      deleteNode(selectedNodeId);
+      // Select sibling or parent after deletion
+      let nextId = null;
+      if (parentChildren && parentChildren.length > 0) {
+        nextId = parentChildren[Math.min(idx, parentChildren.length - 1)];
+      } else if (n.parentId) {
+        nextId = n.parentId;
+      }
+      selectedNodeId = null;
+      renderAll();
+      if (nextId && nodes[nextId]) selectNode(nextId);
+      saveState();
+    }
+    return;
   }
 
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
