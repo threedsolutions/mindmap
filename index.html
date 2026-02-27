@@ -108,6 +108,7 @@
   }
 
   .node-el.is-editing .node-label { display: none; }
+  @keyframes blink-border { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
   .node-input {
     font-family: 'JetBrains Mono', monospace;
     font-size: 13px;
@@ -122,6 +123,20 @@
     width: 80px;
     letter-spacing: 0.01em;
     user-select: text;
+    caret-color: transparent;
+  }
+  .node-el.is-editing {
+    position: relative;
+  }
+  .node-el.is-editing::after {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    left: 4px;
+    width: var(--understroke-w, 9px);
+    height: 1px;
+    background: var(--text);
+    animation: blink-border 1s step-start infinite;
   }
 
   .node-del {
@@ -144,7 +159,8 @@
   body.dragging-active .node-del { opacity: 0 !important; pointer-events: none !important; }
   .node-del:hover { color: #d44; }
 
-  .node-el.dragging { opacity: 0.35; pointer-events: none; }
+  .node-label.selected { background: rgba(200,200,200,0.15); }
+  body.light .node-label.selected { background: rgba(0,0,0,0.08); }
   #drag-ghost {
     position: fixed;
     pointer-events: none;
@@ -209,11 +225,11 @@
     font-size: 10px;
     color: var(--text);
     z-index: 100;
-    line-height: 1.9;
     pointer-events: none;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    gap: 2px 24px;
+    opacity: 0.6;
   }
 
   #export-overlay {
@@ -266,10 +282,11 @@
 
 <div id="hint">
   <div>tab → child</div>
-  <div>enter → sibling</div>
-  <div>ctrl+z → undo &nbsp; ctrl+y → redo</div>
+  <div>enter → edit / sibling</div>
+  <div>ctrl+z/y → undo/redo</div>
+  <div>↑↓ → navigate</div>
+  <div>←→ → parent / child</div>
   <div>drag → reorder &nbsp; ctrl+drag → reparent</div>
-  <div>ctrl + start over → reset map</div>
 </div>
 
 <div id="export-overlay">
@@ -390,10 +407,106 @@ function getThemeColors() {
 window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => drawLines());
 
 
+// ─── Arrow key navigation ─────────────────────────────────────────────────────
+let selectedNodeId = null;
+
+function selectNode(id) {
+  // Clear previous
+  if (selectedNodeId && nodeEls[selectedNodeId]) {
+    nodeEls[selectedNodeId].labelEl.classList.remove('selected');
+  }
+  selectedNodeId = id;
+  if (id && nodeEls[id]) {
+    nodeEls[id].labelEl.classList.add('selected');
+    // Scroll into view
+    const pos = nodePos[id];
+    if (pos) {
+      const screenX = pos.x * scale + tx;
+      const screenY = pos.y * scale + ty;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const PAD = 80;
+      if (screenX < PAD) tx += PAD - screenX;
+      else if (screenX > vw - PAD) tx -= screenX - (vw - PAD);
+      if (screenY < PAD) ty += PAD - screenY;
+      else if (screenY > vh - PAD) ty -= screenY - (vh - PAD);
+      updateTransform();
+    }
+  }
+}
+
+function getDepth(id) {
+  let d = 0, n = nodes[id];
+  while (n && n.parentId != null) { d++; n = nodes[n.parentId]; }
+  return d;
+}
+
+function getNodesSortedByY() {
+  return Object.values(nodes)
+    .filter(n => nodePos[n.id])
+    .sort((a, b) => {
+      const ay = nodePos[a.id].y, by = nodePos[b.id].y;
+      return ay !== by ? ay - by : nodePos[a.id].x - nodePos[b.id].x;
+    });
+}
+
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
-  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
+
+  if (e.key === 'Enter' && selectedNodeId && nodes[selectedNodeId] && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    startEdit(selectedNodeId);
+    return;
+  }
+  e.preventDefault();
+
+  const allSorted = getNodesSortedByY();
+  if (!allSorted.length) return;
+
+  // If nothing selected, select root
+  if (!selectedNodeId || !nodes[selectedNodeId]) {
+    selectNode(allSorted[0].id);
+    return;
+  }
+
+  const cur = nodes[selectedNodeId];
+  const depth = getDepth(selectedNodeId);
+
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    // Only navigate among nodes at same depth
+    const sameDepth = allSorted.filter(n => getDepth(n.id) === depth);
+    if (!sameDepth.length) return;
+    const idx = sameDepth.findIndex(n => n.id === selectedNodeId);
+    if (e.key === 'ArrowDown') {
+      // Wrap around to top at bottom edge
+      const next = sameDepth[(idx + 1) % sameDepth.length];
+      selectNode(next.id);
+    } else {
+      // Wrap around to bottom at top edge
+      const prev = sameDepth[(idx - 1 + sameDepth.length) % sameDepth.length];
+      selectNode(prev.id);
+    }
+
+  } else if (e.key === 'ArrowRight') {
+    // Go to first child (closest in Y)
+    if (cur.children.length > 0) {
+      const curPosY = nodePos[selectedNodeId]?.y ?? 0;
+      const best = cur.children
+        .map(cid => nodes[cid])
+        .filter(Boolean)
+        .reduce((a, b) =>
+          Math.abs((nodePos[a.id]?.y ?? 0) - curPosY) <= Math.abs((nodePos[b.id]?.y ?? 0) - curPosY) ? a : b
+        );
+      selectNode(best.id);
+    }
+
+  } else if (e.key === 'ArrowLeft') {
+    // Go to parent
+    if (cur.parentId != null) {
+      selectNode(cur.parentId);
+    }
+  }
 });
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
@@ -501,8 +614,9 @@ function buildDOM() {
 
     requestAnimationFrame(() => el.classList.replace('node-entering', 'node-visible'));
 
-    labelEl.addEventListener('dblclick', () => startEdit(n.id));
-    if (n.label === '') labelEl.addEventListener('click', () => startEdit(n.id));
+    labelEl.addEventListener('dblclick', () => { selectNode(null); startEdit(n.id); });
+    if (n.label === '') labelEl.addEventListener('click', () => { selectNode(null); startEdit(n.id); });
+    labelEl.addEventListener('click', e => { if (e.detail === 1 && n.label !== '') selectNode(n.id); });
 
     // ── Drag ──
     labelEl.addEventListener('mousedown', e => {
@@ -594,6 +708,11 @@ function buildDOM() {
 
   if (root) buildNode(root);
   drawLines();
+
+  // Restore selection highlight after DOM rebuild
+  if (selectedNodeId && nodeEls[selectedNodeId]) {
+    nodeEls[selectedNodeId].labelEl.classList.add('selected');
+  }
 }
 
 // ─── Drag helpers ─────────────────────────────────────────────────────────────
@@ -842,6 +961,15 @@ function startEdit(id) {
   els.inputEl.style.display = 'inline-block';
   els.inputEl.value = nodes[id]?.label || '';
   els.inputEl.style.width = Math.max(50, Math.max(4, els.inputEl.value.length) * 8.5 + 16) + 'px';
+
+  function updateUnderstroke() {
+    const w = els.inputEl.value ? measureText(els.inputEl.value) : 9;
+    els.el.style.setProperty('--understroke-w', w + 'px');
+  }
+  updateUnderstroke();
+  els.inputEl._understrokeHandler = updateUnderstroke;
+  els.inputEl.addEventListener('input', updateUnderstroke);
+
   setTimeout(() => { els.inputEl.focus(); els.inputEl.select(); }, 30);
 }
 
@@ -851,6 +979,10 @@ function confirmEdit(id) {
   if (!els) return;
   const { el, labelEl, inputEl } = els;
   if (inputEl.style.display === 'none') return;
+  if (inputEl._understrokeHandler) {
+    inputEl.removeEventListener('input', inputEl._understrokeHandler);
+    inputEl._understrokeHandler = null;
+  }
   const val = inputEl.value.trim();
   const n = nodes[id];
   if (!n) return;
