@@ -281,12 +281,12 @@
 </div>
 
 <div id="hint">
-  <div>tab → child</div>
-  <div>enter → edit / sibling</div>
-  <div>ctrl+z/y → undo/redo</div>
-  <div>↑↓ → navigate</div>
-  <div>←→ → parent / child</div>
-  <div>drag → reorder &nbsp; ctrl+drag → reparent</div>
+  <div>tab — child</div>
+  <div>enter — edit / sibling</div>
+  <div>ctrl + z / y — undo / redo</div>
+  <div>↑↓ — navigate</div>
+  <div>← → — parent / child</div>
+  <div>drag — reorder &nbsp; ctrl + drag — reparent</div>
 </div>
 
 <div id="export-overlay">
@@ -1051,7 +1051,7 @@ canvasWrap.addEventListener('wheel', e => {
   const r = canvasWrap.getBoundingClientRect();
   const mx = e.clientX - r.left, my = e.clientY - r.top;
   tx = mx - (mx - tx) * f; ty = my - (my - ty) * f;
-  scale = Math.max(0.15, Math.min(4, scale * f));
+  scale = Math.max(0.15, Math.min(maxScale(), scale * f));
   updateTransform(); saveDebounced();
 }, { passive: false });
 
@@ -1069,14 +1069,16 @@ window.addEventListener('mouseup', () => {
   if (isPanning) { isPanning = false; canvasWrap.style.cursor = ''; saveState(); }
 });
 
-function zoomIn()    { scale = Math.min(4, scale * 1.2); updateTransform(); saveState(); }
+function maxScale() { return (window.innerHeight * 0.05) / NODE_H; }
+function zoomIn()    { scale = Math.min(maxScale(), scale * 1.2); updateTransform(); saveState(); }
 function zoomOut()   { scale = Math.max(0.15, scale / 1.2); updateTransform(); saveState(); }
 function resetZoom() {
   const PAD_X = 60, PAD_Y_TOP = 60, PAD_Y_BOT = 150;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   Object.values(nodes).forEach(n => {
+    if (!n.label) return; // skip placeholder nodes
     const pos = nodePos[n.id]; if (!pos) return;
-    const w = measureText(n.label || '');
+    const w = measureText(n.label);
     minX = Math.min(minX, pos.x);     minY = Math.min(minY, pos.y);
     maxX = Math.max(maxX, pos.x + w); maxY = Math.max(maxY, pos.y + NODE_H);
   });
@@ -1087,7 +1089,7 @@ function resetZoom() {
 
   const scaleX = (vw  - PAD_X * 2)            / treeW;
   const scaleY = (vh  - PAD_Y_TOP - PAD_Y_BOT) / treeH;
-  scale = Math.min(scaleX, scaleY);
+  scale = Math.min(maxScale(), Math.min(scaleX, scaleY));
 
   // Top-left aligned with padding
   tx = PAD_X - minX * scale;
