@@ -1187,12 +1187,32 @@ function saveDebounced() {
 
 canvasWrap.addEventListener('wheel', e => {
   e.preventDefault();
+  const atMin = scale <= 0.15;
+  const atMax = scale >= maxScale();
+  const zoomingOut = e.deltaY > 0;
+  const zoomingIn  = e.deltaY < 0;
+  if ((atMin && zoomingOut) || (atMax && zoomingIn)) return;
+
   const delta = Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 100);
-  const f = 1 - delta * 0.0008;
+  const rawF = 1 - delta * 0.0008;
+
+  // Ease strength near limits: t=0 at limit, t=1 far from limit
+  const minS = 0.15, maxS = maxScale();
+  const range = maxS - minS;
+  const easeZone = range * 0.20; // 20% of range = ease zone
+  let ease = 1;
+  if (zoomingOut) {
+    ease = Math.min(1, (scale - minS) / easeZone);
+  } else {
+    ease = Math.min(1, (maxS - scale) / easeZone);
+  }
+  ease = ease * ease; // quadratic
+  const f = 1 + (rawF - 1) * ease;
+
   const r = canvasWrap.getBoundingClientRect();
   const mx = e.clientX - r.left, my = e.clientY - r.top;
   tx = mx - (mx - tx) * f; ty = my - (my - ty) * f;
-  scale = Math.max(0.15, Math.min(maxScale(), scale * f));
+  scale = Math.max(minS, Math.min(maxS, scale * f));
   updateTransform(); saveDebounced();
 }, { passive: false });
 
@@ -1217,7 +1237,7 @@ function resetZoom() {
   const PAD_X = 60, PAD_Y_TOP = 60, PAD_Y_BOT = 150;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   Object.values(nodes).forEach(n => {
-    if (!n.label) return; // skip placeholder nodes
+    if (!n.label) return;
     const pos = nodePos[n.id]; if (!pos) return;
     const w = measureText(n.label);
     minX = Math.min(minX, pos.x);     minY = Math.min(minY, pos.y);
@@ -1227,17 +1247,27 @@ function resetZoom() {
 
   const treeW = maxX - minX, treeH = maxY - minY;
   const vw = window.innerWidth, vh = window.innerHeight;
+  const scaleX = (vw - PAD_X * 2) / treeW;
+  const scaleY = (vh - PAD_Y_TOP - PAD_Y_BOT) / treeH;
+  const targetScale = Math.min(maxScale(), Math.min(scaleX, scaleY));
+  const targetTx = PAD_X - minX * targetScale;
+  const targetTy = PAD_Y_TOP - minY * targetScale;
 
-  const scaleX = (vw  - PAD_X * 2)            / treeW;
-  const scaleY = (vh  - PAD_Y_TOP - PAD_Y_BOT) / treeH;
-  scale = Math.min(maxScale(), Math.min(scaleX, scaleY));
-
-  // Top-left aligned with padding
-  tx = PAD_X - minX * scale;
-  ty = PAD_Y_TOP - minY * scale;
-
-  updateTransform();
-  saveState();
+  const startScale = scale, startTx = tx, startTy = ty;
+  const duration = 700;
+  const startTime = performance.now();
+  function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+  function animate(now) {
+    const t = Math.min(1, (now - startTime) / duration);
+    const e = easeOut(t);
+    scale = startScale + (targetScale - startScale) * e;
+    tx    = startTx    + (targetTx    - startTx)    * e;
+    ty    = startTy    + (targetTy    - startTy)    * e;
+    updateTransform();
+    if (t < 1) requestAnimationFrame(animate);
+    else saveState();
+  }
+  requestAnimationFrame(animate);
 }
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
