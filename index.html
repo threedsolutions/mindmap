@@ -123,7 +123,7 @@
     width: 80px;
     letter-spacing: 0.01em;
     user-select: text;
-    caret-color: transparent;
+    caret-color: var(--text);
   }
   .node-el.is-editing {
     position: relative;
@@ -215,6 +215,26 @@
   .ctrl-btn:hover { border-color: var(--text); color: var(--text); }
   .ctrl-btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
 
+  #btn-start-over { position: relative; }
+  #start-over-tip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 4px 8px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 200;
+  }
+  #start-over-tip.visible { opacity: 1; }
+
   #btn-start-over { color: #c87; border-color: #5a3a3a; }
   #btn-start-over:hover { border-color: #d44; color: #d44; }
 
@@ -258,6 +278,73 @@
     transition: width 0.2s ease;
     border-radius: 1px;
   }
+
+  /* ── Help modal ── */
+  #help-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    align-items: center;
+    justify-content: center;
+  }
+  #help-overlay.visible { display: flex; }
+  #help-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+  }
+  #help-modal {
+    position: relative;
+    z-index: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 32px 40px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text);
+    min-width: 420px;
+    max-width: 560px;
+  }
+  #help-modal h2 {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    opacity: 0.5;
+  }
+  .help-section { margin-bottom: 20px; }
+  .help-section-title {
+    font-size: 10px;
+    opacity: 0.4;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+  }
+  .help-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 3px 0;
+    border-bottom: 1px solid transparent;
+  }
+  .help-key {
+    opacity: 0.5;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .help-desc { opacity: 0.85; }
+  #help-close {
+    position: absolute;
+    top: 16px; right: 20px;
+    background: none; border: none;
+    color: var(--text); opacity: 0.4;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; cursor: pointer;
+    padding: 4px 8px;
+  }
+  #help-close:hover { opacity: 1; }
 </style>
 </head>
 <body>
@@ -277,7 +364,54 @@
   <button class="ctrl-btn" onclick="resetZoom()">reset view</button>
   <button class="ctrl-btn" onclick="zoomOut()">−</button>
   <button class="ctrl-btn" onclick="zoomIn()">+</button>
-  <button class="ctrl-btn" id="btn-start-over" onclick="startOver(event)">start over</button>
+  <button class="ctrl-btn" id="btn-start-over" onclick="startOver(event)">start over<span id="start-over-tip">hold ctrl</span></button>
+  <button class="ctrl-btn" onclick="toggleHelp()">?</button>
+</div>
+
+<div id="help-overlay">
+  <div id="help-backdrop" onclick="toggleHelp()"></div>
+  <div id="help-modal">
+    <button id="help-close" onclick="toggleHelp()">esc</button>
+    <h2>how to use</h2>
+
+    <div class="help-section">
+      <div class="help-section-title">navigation</div>
+      <div class="help-row"><span class="help-key">↑ / ↓</span><span class="help-desc">move between nodes at the same depth</span></div>
+      <div class="help-row"><span class="help-key">← / →</span><span class="help-desc">go to parent / first child</span></div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">editing</div>
+      <div class="help-row"><span class="help-key">enter</span><span class="help-desc">open edit on selected node</span></div>
+      <div class="help-row"><span class="help-key">enter (in edit)</span><span class="help-desc">confirm and create sibling</span></div>
+      <div class="help-row"><span class="help-key">tab (in edit)</span><span class="help-desc">confirm and create child</span></div>
+      <div class="help-row"><span class="help-key">escape (in edit)</span><span class="help-desc">cancel and revert changes</span></div>
+      <div class="help-row"><span class="help-key">double click</span><span class="help-desc">open edit on any node</span></div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">drag & drop</div>
+      <div class="help-row"><span class="help-key">drag</span><span class="help-desc">reorder node within same parent</span></div>
+      <div class="help-row"><span class="help-key">ctrl + drag</span><span class="help-desc">move node to a different parent</span></div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">history & view</div>
+      <div class="help-row"><span class="help-key">ctrl + z</span><span class="help-desc">undo</span></div>
+      <div class="help-row"><span class="help-key">ctrl + y</span><span class="help-desc">redo</span></div>
+      <div class="help-row"><span class="help-key">scroll</span><span class="help-desc">zoom in / out</span></div>
+      <div class="help-row"><span class="help-key">click + drag (canvas)</span><span class="help-desc">pan the view</span></div>
+      <div class="help-row"><span class="help-key">reset view</span><span class="help-desc">fit entire tree to window</span></div>
+      <div class="help-row"><span class="help-key">ctrl + start over</span><span class="help-desc">clear the entire map</span></div>
+    </div>
+
+    <div class="help-section">
+      <div class="help-section-title">export</div>
+      <div class="help-row"><span class="help-key">svg</span><span class="help-desc">export as vector graphic</span></div>
+      <div class="help-row"><span class="help-key">png</span><span class="help-desc">export as image with transparent background</span></div>
+      <div class="help-row"><span class="help-key">jpeg</span><span class="help-desc">export as compressed image</span></div>
+    </div>
+  </div>
 </div>
 
 <div id="hint">
@@ -451,6 +585,11 @@ function getNodesSortedByY() {
 
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'Escape') {
+    const overlay = document.getElementById('help-overlay');
+    if (overlay.classList.contains('visible')) { overlay.classList.remove('visible'); return; }
+  }
+
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
   if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
 
@@ -459,6 +598,8 @@ window.addEventListener('keydown', e => {
     startEdit(selectedNodeId);
     return;
   }
+
+  if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) return;
   e.preventDefault();
 
   const allSorted = getNodesSortedByY();
@@ -1130,8 +1271,19 @@ function loadState() {
   } catch(e) { return false; }
 }
 
+let _startOverTipTimer = null;
+function toggleHelp() {
+  document.getElementById('help-overlay').classList.toggle('visible');
+}
+
 function startOver(e) {
-  if (!e.ctrlKey) return;
+  if (!e.ctrlKey) {
+    const tip = document.getElementById('start-over-tip');
+    tip.classList.add('visible');
+    clearTimeout(_startOverTipTimer);
+    _startOverTipTimer = setTimeout(() => tip.classList.remove('visible'), 1500);
+    return;
+  }
   pushUndo();
   Object.keys(nodes).forEach(k => delete nodes[k]);
   idCounter = 0; root = createNode(null, '');
