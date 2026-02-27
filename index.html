@@ -1118,71 +1118,75 @@ async function exportRaster(format) {
   setProgress(0, `exporting ${format}…`);
   await new Promise(r => setTimeout(r, 60));
 
-  const isPNG = format === 'png';
-  const { svg, W, H, bgColor } = buildVectorSVG({ transparent: false });
-  setProgress(15, 'loading font…');
-  await new Promise(r => setTimeout(r, 30));
-
-  let fontFace = '';
   try {
-    const fontResp = await fetch(
-      'https://fonts.gstatic.com/s/jetbrainsmono/v18/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTOlOTk6OThhvAWV8.woff2'
-    );
-    if (fontResp.ok) {
-      const buf = await fontResp.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = '';
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-      const b64 = btoa(binary);
-      fontFace = `<defs><style>@font-face{font-family:'JetBrains Mono';font-weight:400;src:url('data:font/woff2;base64,${b64}') format('woff2');}</style></defs>`;
-    }
-  } catch(_) {}
+    const isPNG = format === 'png';
+    const { svg, W, H, bgColor } = buildVectorSVG({ transparent: isPNG });
+    setProgress(15, 'loading font…');
+    await new Promise(r => setTimeout(r, 30));
 
-  setProgress(35, 'rendering svg…');
-  await new Promise(r => setTimeout(r, 30));
+    let fontFace = '';
+    try {
+      const fontResp = await fetch(
+        'https://fonts.gstatic.com/s/jetbrainsmono/v18/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTOlOTk6OThhvAWV8.woff2'
+      );
+      if (fontResp.ok) {
+        const buf = await fontResp.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        fontFace = `<defs><style>@font-face{font-family:'JetBrains Mono';font-weight:400;src:url('data:font/woff2;base64,${btoa(binary)}') format('woff2');}</style></defs>`;
+      }
+    } catch(_) {}
 
-  let svgStr = new XMLSerializer().serializeToString(svg);
-  if (fontFace) svgStr = svgStr.replace(/<svg([^>]*)>/, `<svg$1>${fontFace}`);
+    setProgress(35, 'rendering svg…');
+    await new Promise(r => setTimeout(r, 30));
 
-  const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-  const svgUrl  = URL.createObjectURL(svgBlob);
-  const img = new Image();
-  img.width  = W * RASTER_SCALE;
-  img.height = H * RASTER_SCALE;
+    let svgStr = new XMLSerializer().serializeToString(svg);
+    if (fontFace) svgStr = svgStr.replace(/<svg([^>]*)>/, `<svg$1>${fontFace}`);
 
-  setProgress(55, 'drawing canvas…');
-  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = svgUrl; });
+    const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const svgUrl  = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
 
-  const canvas = document.createElement('canvas');
-  canvas.width  = W * RASTER_SCALE; canvas.height = H * RASTER_SCALE;
-  const ctx = canvas.getContext('2d');
+    setProgress(55, 'drawing canvas…');
+    const img = new Image();
+    img.width  = W * RASTER_SCALE;
+    img.height = H * RASTER_SCALE;
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = svgUrl; });
 
-  setProgress(75, 'compositing…');
-  await new Promise(r => setTimeout(r, 30));
+    const canvas = document.createElement('canvas');
+    canvas.width  = W * RASTER_SCALE; canvas.height = H * RASTER_SCALE;
+    const ctx = canvas.getContext('2d');
 
-  ctx.fillStyle = bgColor;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  URL.revokeObjectURL(svgUrl);
+    setProgress(75, 'compositing…');
+    await new Promise(r => setTimeout(r, 30));
 
-  setProgress(90, 'encoding…');
-  await new Promise(r => setTimeout(r, 30));
+    ctx.fillStyle = bgColor;
+    if (!isPNG) ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-  const name = (root?.label || 'mindmap').replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
-  const mimeType = isPNG ? 'image/png' : 'image/jpeg';
-  const quality  = isPNG ? undefined : 0.95;
+    setProgress(90, 'encoding…');
+    await new Promise(r => setTimeout(r, 30));
 
-  // Use toBlob to avoid blocking the main thread (fixes JPEG hang)
-  const fileBlob = await new Promise(res => canvas.toBlob(res, mimeType, quality));
-  const fileUrl  = URL.createObjectURL(fileBlob);
-  const a = document.createElement('a');
-  a.href = fileUrl; a.download = `${name}.${format}`; a.click();
-  setTimeout(() => URL.revokeObjectURL(fileUrl), 1000);
+    const name = (root?.label || 'mindmap').replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+    const mimeType = isPNG ? 'image/png' : 'image/jpeg';
+    const quality  = isPNG ? undefined : 0.95;
 
-  setProgress(100, 'done ✓');
-  await new Promise(r => setTimeout(r, 500));
-  overlay.classList.remove('visible');
-  setProgress(0, '');
+    const fileBlob = await new Promise(res => canvas.toBlob(res, mimeType, quality));
+    const fileUrl  = URL.createObjectURL(fileBlob);
+    const a = document.createElement('a');
+    a.href = fileUrl; a.download = `${name}.${format}`; a.click();
+    setTimeout(() => URL.revokeObjectURL(fileUrl), 1000);
+
+    setProgress(100, 'done ✓');
+    await new Promise(r => setTimeout(r, 500));
+  } catch(err) {
+    console.error('Export error:', err);
+    setProgress(0, 'error ✗');
+    await new Promise(r => setTimeout(r, 1000));
+  } finally {
+    overlay.classList.remove('visible');
+    setProgress(0, '');
+  }
 }
 </script>
 </body>
