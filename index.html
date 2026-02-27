@@ -1366,6 +1366,7 @@ const loaded = loadState();
 if (!loaded) { root = createNode(null, ''); }
 renderAll(); updateTransform();
 if (!loaded) { setTimeout(() => startEdit(root.id), 80); }
+else { setTimeout(() => resetZoom(), 80); }
 updateUndoButtons();
 </script>
 
