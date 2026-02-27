@@ -139,25 +139,6 @@
     animation: blink-border 1s step-start infinite;
   }
 
-  .node-del {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 14px; height: 14px;
-    border: none;
-    background: transparent;
-    color: var(--del-color);
-    font-size: 13px;
-    cursor: pointer;
-    margin-left: 1px; margin-right: 1px;
-    flex-shrink: 0;
-    transition: color 0.1s;
-    opacity: 0;
-    pointer-events: none;
-  }
-  .node-el:hover .node-del { opacity: 1; pointer-events: auto; }
-  body.dragging-active .node-del { opacity: 0 !important; pointer-events: none !important; }
-  .node-del:hover { color: #d44; }
 
   .node-label.selected { background: rgba(200,200,200,0.15); }
   body.light .node-label.selected { background: rgba(0,0,0,0.08); }
@@ -766,20 +747,8 @@ function buildDOM() {
     inputEl.value = n.label;
     inputEl.style.display = 'none';
 
-    const delBtn = document.createElement('span');
-    delBtn.className = 'node-del';
-    delBtn.innerHTML = '×';
-
     el.appendChild(labelEl);
     el.appendChild(inputEl);
-    if (n.parentId != null) {
-      delBtn.addEventListener('mousedown', () => { suppressBlur = true; });
-      delBtn.addEventListener('click', () => {
-        setTimeout(() => { suppressBlur = false; }, 0);
-        pushUndo(); deleteNode(n.id); renderAll();
-      });
-      el.appendChild(delBtn);
-    }
 
     nodeEls[n.id] = { el, labelEl, inputEl };
     mapContainer.appendChild(el);
@@ -1366,7 +1335,10 @@ const loaded = loadState();
 if (!loaded) { root = createNode(null, ''); }
 renderAll(); updateTransform();
 if (!loaded) { setTimeout(() => startEdit(root.id), 80); }
-else { setTimeout(() => resetZoom(), 80); }
+else {
+  const hasContent = Object.values(nodes).some(n => n.label);
+  if (hasContent) setTimeout(() => resetZoom(), 80);
+}
 updateUndoButtons();
 </script>
 
