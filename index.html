@@ -420,18 +420,39 @@
 </div>
 
 <script>
-const COL_GAP   = 80;
-const ROW_H     = 22;
-const GROUP_GAP = 65;
-const NODE_H    = 22;
+'use strict';
+
+// ─── Named constants (no more magic numbers) ─────────────────────────────────
+const COL_GAP       = 80;   // horizontal gap between depth columns
+const ROW_H         = 22;   // vertical row height
+const GROUP_GAP     = 65;   // minimum subtree height
+const NODE_H        = 22;   // node element height
+const LINE_GAP      = 16;   // gap between label end and line start (was G=16)
+const RAIL_OFFSET   = 25;   // offset of vertical rail from child x (was RO=25)
+const DRAG_THRESH   = 5;    // px before drag activates
+const DROP_RADIUS   = 60;   // reparent proximity radius
+const REORDER_X_TOL = 80;   // horizontal tolerance for reorder detection
+const CHAR_WIDTH    = 8.5;  // approximate char width for input sizing
+const INPUT_PAD     = 16;   // extra padding for input width
+const MIN_INPUT_W   = 50;   // minimum input width
+const MIN_SCALE     = 0.15; // minimum zoom level
+const MAX_RASTER_DIM = 8000; // max raster export dimension (px)
 
 const _mc = document.createElement('canvas');
 const _mx = _mc.getContext('2d');
 _mx.font = '400 13px "JetBrains Mono", monospace';
+
+// ─── Text measurement with cache ──────────────────────────────────────────────
+const _textCache = new Map();
 function measureText(label) {
   if (!label) return 40;
-  return Math.ceil(_mx.measureText(label).width);
+  const cached = _textCache.get(label);
+  if (cached !== undefined) return cached;
+  const w = Math.ceil(_mx.measureText(label).width);
+  _textCache.set(label, w);
+  return w;
 }
+function clearTextCache() { _textCache.clear(); }
 
 // ─── Tree ─────────────────────────────────────────────────────────────────────
 let idCounter = 0;
@@ -467,6 +488,22 @@ function insertSiblingAfter(id) {
   return sib;
 }
 
+// ─── Edit state (separated from node data) ────────────────────────────────────
+const editState = new Map(); // nodeId -> { originalLabel }
+
+function setEditState(id, originalLabel) {
+  editState.set(id, { originalLabel });
+}
+
+function getOriginalLabel(id) {
+  const s = editState.get(id);
+  return s ? s.originalLabel : undefined;
+}
+
+function clearEditState(id) {
+  editState.delete(id);
+}
+
 // ─── Undo / Redo ──────────────────────────────────────────────────────────────
 const HISTORY_LIMIT = 60;
 let undoStack = [];
@@ -487,7 +524,6 @@ function pushUndo() {
   undoStack.push(snapshotTree());
   if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
   redoStack = [];
-  updateUndoButtons();
 }
 
 function restoreSnapshot(snapshot) {
@@ -505,17 +541,15 @@ function undo() {
   if (!undoStack.length) return;
   redoStack.push(snapshotTree());
   isUndoRedo = true; restoreSnapshot(undoStack.pop()); isUndoRedo = false;
-  renderAll(); updateUndoButtons();
+  renderAll();
 }
 
 function redo() {
   if (!redoStack.length) return;
   undoStack.push(snapshotTree());
   isUndoRedo = true; restoreSnapshot(redoStack.pop()); isUndoRedo = false;
-  renderAll(); updateUndoButtons();
+  renderAll();
 }
-
-function updateUndoButtons() { /* buttons removed, ctrl+z/y still works */ }
 
 function getThemeColors() {
   const light = window.matchMedia('(prefers-color-scheme: light)').matches;
@@ -534,14 +568,12 @@ window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', ()
 let selectedNodeId = null;
 
 function selectNode(id) {
-  // Clear previous
   if (selectedNodeId && nodeEls[selectedNodeId]) {
     nodeEls[selectedNodeId].labelEl.classList.remove('selected');
   }
   selectedNodeId = id;
   if (id && nodeEls[id]) {
     nodeEls[id].labelEl.classList.add('selected');
-    // Scroll into view
     const pos = nodePos[id];
     if (pos) {
       const screenX = pos.x * scale + tx;
@@ -581,13 +613,12 @@ window.addEventListener('keydown', e => {
 
   if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId && nodes[selectedNodeId]) {
     const n = nodes[selectedNodeId];
-    if (n.parentId != null) { // don't delete root
+    if (n.parentId != null) {
       e.preventDefault();
       pushUndo();
       const parentChildren = nodes[n.parentId]?.children;
       const idx = parentChildren ? parentChildren.indexOf(selectedNodeId) : -1;
       deleteNode(selectedNodeId);
-      // Select sibling or parent after deletion
       let nextId = null;
       if (parentChildren && parentChildren.length > 0) {
         nextId = parentChildren[Math.min(idx, parentChildren.length - 1)];
@@ -617,7 +648,6 @@ window.addEventListener('keydown', e => {
   const allSorted = getNodesSortedByY();
   if (!allSorted.length) return;
 
-  // If nothing selected, select root
   if (!selectedNodeId || !nodes[selectedNodeId]) {
     selectNode(allSorted[0].id);
     return;
@@ -627,22 +657,18 @@ window.addEventListener('keydown', e => {
   const depth = getDepth(selectedNodeId);
 
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-    // Only navigate among nodes at same depth
     const sameDepth = allSorted.filter(n => getDepth(n.id) === depth);
     if (!sameDepth.length) return;
     const idx = sameDepth.findIndex(n => n.id === selectedNodeId);
     if (e.key === 'ArrowDown') {
-      // Wrap around to top at bottom edge
       const next = sameDepth[(idx + 1) % sameDepth.length];
       selectNode(next.id);
     } else {
-      // Wrap around to bottom at top edge
       const prev = sameDepth[(idx - 1 + sameDepth.length) % sameDepth.length];
       selectNode(prev.id);
     }
 
   } else if (e.key === 'ArrowRight') {
-    // Go to first child (closest in Y)
     if (cur.children.length > 0) {
       const curPosY = nodePos[selectedNodeId]?.y ?? 0;
       const best = cur.children
@@ -655,7 +681,6 @@ window.addEventListener('keydown', e => {
     }
 
   } else if (e.key === 'ArrowLeft') {
-    // Go to parent
     if (cur.parentId != null) {
       selectNode(cur.parentId);
     }
@@ -664,18 +689,21 @@ window.addEventListener('keydown', e => {
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 const nodePos = {};
-const subtreeHeightCache = {};
+let subtreeHeightCache = new Map();
 
 function subtreeHeight(id) {
-  if (subtreeHeightCache[id] !== undefined) return subtreeHeightCache[id];
+  const cached = subtreeHeightCache.get(id);
+  if (cached !== undefined) return cached;
   const n = nodes[id];
-  if (!n || n.children.length === 0) return (subtreeHeightCache[id] = ROW_H);
+  if (!n || n.children.length === 0) { subtreeHeightCache.set(id, ROW_H); return ROW_H; }
   const total = n.children.reduce((s, cid) => s + subtreeHeight(cid), 0);
-  return (subtreeHeightCache[id] = Math.max(GROUP_GAP, total));
+  const h = Math.max(GROUP_GAP, total);
+  subtreeHeightCache.set(id, h);
+  return h;
 }
 
 function invalidateHeightCache() {
-  Object.keys(subtreeHeightCache).forEach(k => delete subtreeHeightCache[k]);
+  subtreeHeightCache.clear();
 }
 
 function layoutTree() {
@@ -715,16 +743,48 @@ function layoutTree() {
 const mapContainer = document.getElementById('map-container');
 const svgLayer = document.getElementById('svg-layer');
 const nodeEls = {};
-let suppressBlur = false;
+let suppressBlurCounter = 0; // counter instead of boolean to avoid race conditions
 let activeEditId = null;
 
 let dragNodeId   = null;
 const dragGhost  = document.getElementById('drag-ghost');
 let dropTargetId = null;
 
+// ─── SVG line pool for efficient reuse ────────────────────────────────────────
+const svgPathPool = [];
+let svgPathsInUse = 0;
+
+function acquirePath() {
+  let path;
+  if (svgPathsInUse < svgPathPool.length) {
+    path = svgPathPool[svgPathsInUse];
+  } else {
+    path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('class', 'map-line');
+    svgPathPool.push(path);
+  }
+  svgPathsInUse++;
+  return path;
+}
+
+function resetPathPool() {
+  // Hide unused paths, keep them in DOM for reuse
+  for (let i = svgPathsInUse; i < svgPathPool.length; i++) {
+    if (svgPathPool[i].parentNode) svgPathPool[i].remove();
+  }
+  svgPathsInUse = 0;
+}
+
 function buildDOM() {
   mapContainer.querySelectorAll('.node-el').forEach(e => e.remove());
-  svgLayer.innerHTML = '';
+  resetPathPool();
+  // Don't clear innerHTML — pool manages paths; only remove non-pool children
+  const nonPool = [];
+  for (const child of svgLayer.children) {
+    if (!svgPathPool.includes(child) && child !== dropLineEl) nonPool.push(child);
+  }
+  nonPool.forEach(el => el.remove());
+
   Object.keys(nodeEls).forEach(k => delete nodeEls[k]);
 
   function buildNode(n) {
@@ -766,7 +826,7 @@ function buildDOM() {
       let dragging = false;
 
       const onMove = mv => {
-        if (!dragging && (Math.abs(mv.clientX - startX) > 5 || Math.abs(mv.clientY - startY) > 5)) {
+        if (!dragging && (Math.abs(mv.clientX - startX) > DRAG_THRESH || Math.abs(mv.clientY - startY) > DRAG_THRESH)) {
           dragging = true;
           dragNodeId = n.id;
           dragGhost.textContent = n.label || '…';
@@ -804,55 +864,58 @@ function buildDOM() {
         e.preventDefault(); e.stopPropagation();
         const val = inputEl.value.trim();
         if (!val) {
-          // No text — cancel and delete if it's a new empty node
           cancelEdit(n.id);
         } else {
-          // Has text — confirm and keep selection on this node
-          suppressBlur = true;
+          suppressBlurCounter++;
           activeEditId = null;
           pushUndo();
           n.label = val;
-          if (n._originalLabel !== undefined) delete n._originalLabel;
+          clearEditState(n.id);
           const id = n.id;
           renderAll();
           selectNode(id);
+          suppressBlurCounter--;
         }
       } else if (e.key === 'Tab') {
         e.preventDefault(); e.stopPropagation();
         const val = inputEl.value.trim();
-        if (!val) return; // block child creation if parent is empty
-        suppressBlur = true;
+        if (!val) return;
+        suppressBlurCounter++;
         n.label = val;
         activeEditId = null;
+        clearEditState(n.id);
         pushUndo();
         const child = createNode(n.id, '');
         renderAll();
         requestAnimationFrame(() => startEdit(child.id));
+        suppressBlurCounter--;
       } else if (e.key === 'Enter') {
         e.preventDefault(); e.stopPropagation();
         const val = inputEl.value.trim();
-        if (!val) return; // stay in edit if empty
-        suppressBlur = true;
+        if (!val) return;
+        suppressBlurCounter++;
         activeEditId = null;
         n.label = val;
+        clearEditState(n.id);
         if (n.parentId != null) {
           pushUndo();
           const sib = insertSiblingAfter(n.id);
           if (sib) { renderAll(); requestAnimationFrame(() => startEdit(sib.id)); }
         } else { renderAll(); }
+        suppressBlurCounter--;
       } else {
         e.stopPropagation();
       }
     });
 
     inputEl.addEventListener('input', () => {
-      inputEl.style.width = Math.max(50, inputEl.value.length * 8.5 + 16) + 'px';
+      inputEl.style.width = Math.max(MIN_INPUT_W, inputEl.value.length * CHAR_WIDTH + INPUT_PAD) + 'px';
       n.label = inputEl.value;
       rerenderPositionsOnly();
     });
 
     inputEl.addEventListener('blur', () => {
-      if (suppressBlur || !document.contains(inputEl)) return;
+      if (suppressBlurCounter > 0 || !document.contains(inputEl)) return;
       if (activeEditId !== n.id) return;
       confirmEdit(n.id);
     });
@@ -863,18 +926,14 @@ function buildDOM() {
   if (root) buildNode(root);
   drawLines();
 
-  // Restore selection highlight after DOM rebuild
   if (selectedNodeId && nodeEls[selectedNodeId]) {
     nodeEls[selectedNodeId].labelEl.classList.add('selected');
   }
 }
 
 // ─── Drag helpers ─────────────────────────────────────────────────────────────
-// dropTargetId = reparent target (node id)
-// dropInsert   = { parentId, beforeId } for reorder (beforeId=null = append)
 let dropInsert = null;
-
-// SVG line showing insert position
+let dropLineEl = null;  // FIX: properly declared
 let dropLineCoords = null;
 
 function showDropLine(x1, y, x2) {
@@ -922,7 +981,7 @@ function updateDropTarget(cx, cy, ctrlKey) {
       if (!pos) return;
       const dx = mx - (pos.x + 30), dy = my - (pos.y + NODE_H / 2);
       const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist < 60 && dist < bestDist) { bestDist = dist; best = n.id; }
+      if (dist < DROP_RADIUS && dist < bestDist) { bestDist = dist; best = n.id; }
     });
     dropTargetId = best;
     if (best && nodeEls[best]) nodeEls[best].el.classList.add('drop-target');
@@ -937,12 +996,10 @@ function updateDropTarget(cx, cy, ctrlKey) {
   if (siblings.length === 0) return;
 
   const firstSibPos = nodePos[siblings[0]];
-  if (!firstSibPos || Math.abs(mx - (firstSibPos.x + 30)) > 80) return;
+  if (!firstSibPos || Math.abs(mx - (firstSibPos.x + 30)) > REORDER_X_TOL) return;
 
-  // Current position of dragNode in parent's children (with dragNode included)
-  const allChildren = parent.children; // includes dragNodeId
+  const allChildren = parent.children;
   const dragIdx = allChildren.indexOf(dragNodeId);
-  // "next sibling" after dragNode in the full list
   const nextSiblingId = allChildren[dragIdx + 1] ?? null;
 
   const dragPos = nodePos[dragNodeId];
@@ -958,9 +1015,7 @@ function updateDropTarget(cx, cy, ctrlKey) {
       const candidateY = prevPos
         ? (prevPos.y + NODE_H / 2 + sPos.y + NODE_H / 2) / 2
         : sPos.y + NODE_H / 2 - ROW_H / 2;
-      // Skip if this is the original position (inserting before nextSibling = no change)
       if (insertBefore === nextSiblingId) break;
-      // Skip if line would appear at dragNode's own position
       if (dragPos && Math.abs(candidateY - (dragPos.y + NODE_H / 2)) < NODE_H) break;
       lineY = candidateY;
       break;
@@ -970,7 +1025,6 @@ function updateDropTarget(cx, cy, ctrlKey) {
   if (lineY === null) {
     const lastPos = nodePos[siblings[siblings.length - 1]];
     if (lastPos) {
-      // Skip if dragNode is already last (nextSiblingId === null)
       if (nextSiblingId !== null) {
         lineY = lastPos.y + NODE_H / 2 + ROW_H / 2;
       }
@@ -979,9 +1033,8 @@ function updateDropTarget(cx, cy, ctrlKey) {
 
   if (lineY !== null) {
     dropInsert = { parentId: dragN.parentId, beforeId: insertBefore };
-    const RO = 25, G = 16;
-    const railX  = firstSibPos.x - RO;
-    const lineLen = RO - G;
+    const railX  = firstSibPos.x - RAIL_OFFSET;
+    const lineLen = RAIL_OFFSET - LINE_GAP;
     showDropLine(railX - lineLen, lineY, railX);
   }
 }
@@ -1003,16 +1056,13 @@ function commitDrop() {
   const dragN = nodes[dragNodeId];
   if (!dragN) return;
 
-  // ── Reorder ──
   if (dropInsert) {
     const { parentId, beforeId } = dropInsert;
     const parent = nodes[parentId];
     if (!parent) return;
     pushUndo();
-    // Remove from current position
     const arr = parent.children;
     arr.splice(arr.indexOf(dragNodeId), 1);
-    // Insert at new position
     if (beforeId == null) {
       arr.push(dragNodeId);
     } else {
@@ -1022,7 +1072,6 @@ function commitDrop() {
     return;
   }
 
-  // ── Reparent ──
   if (!dropTargetId || dragNodeId === dropTargetId) return;
   pushUndo();
   if (dragN.parentId != null && nodes[dragN.parentId]) {
@@ -1047,11 +1096,9 @@ function rerenderPositionsOnly() {
   drawLines();
 }
 
-// ─── Lines ────────────────────────────────────────────────────────────────────
+// ─── Lines (with SVG path pool) ───────────────────────────────────────────────
 function drawLines() {
-  svgLayer.innerHTML = '';
-  dropLineEl = null; // cleared by innerHTML reset
-  const G = 16, RO = 25;
+  resetPathPool();
 
   Object.values(nodes).forEach(n => {
     if (!n.children.length) return;
@@ -1070,8 +1117,8 @@ function drawLines() {
     const lastPos  = nodePos[n.children[n.children.length - 1]];
     if (!firstPos || !lastPos) return;
 
-    const railX = firstPos.x - RO;
-    const stubX = pPos.x + labelW + G;
+    const railX = firstPos.x - RAIL_OFFSET;
+    const stubX = pPos.x + labelW + LINE_GAP;
     const pY    = pPos.y + NODE_H / 2;
     const firstY= firstPos.y + NODE_H / 2;
     const lastY = lastPos.y  + NODE_H / 2;
@@ -1079,29 +1126,31 @@ function drawLines() {
 
     let d;
     if (n.children.length === 1 && firstY === pY) {
-      d = `M ${stubX} ${pY} H ${firstPos.x - G}`;
+      d = `M ${stubX} ${pY} H ${firstPos.x - LINE_GAP}`;
     } else {
       d = `M ${stubX} ${pY} H ${railX} V ${railBottom}`;
       if (railTop < pY) d = `M ${stubX} ${pY} H ${railX} V ${railTop} M ${railX} ${pY} V ${railBottom}`;
     }
 
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('class', 'map-line');
+    const path = acquirePath();
     path.setAttribute('d', d);
-    svgLayer.appendChild(path);
+    if (!path.parentNode) svgLayer.appendChild(path);
 
     n.children.forEach(cid => {
       if (n.children.length === 1 && firstY === pY) return;
       const cPos = nodePos[cid];
       if (!cPos) return;
-      const branch = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      branch.setAttribute('class', 'map-line');
-      branch.setAttribute('d', `M ${railX} ${cPos.y + NODE_H/2} H ${cPos.x - G}`);
-      svgLayer.appendChild(branch);
+      const branch = acquirePath();
+      branch.setAttribute('d', `M ${railX} ${cPos.y + NODE_H/2} H ${cPos.x - LINE_GAP}`);
+      if (!branch.parentNode) svgLayer.appendChild(branch);
     });
   });
 
-  // Redraw drop indicator line if active
+  // Remove unused pool paths from DOM
+  for (let i = svgPathsInUse; i < svgPathPool.length; i++) {
+    if (svgPathPool[i].parentNode) svgPathPool[i].remove();
+  }
+
   renderDropLine();
 }
 
@@ -1110,11 +1159,11 @@ function startEdit(id) {
   const els = nodeEls[id];
   if (!els) return;
   activeEditId = id;
-  nodes[id]._originalLabel = nodes[id].label;
+  setEditState(id, nodes[id].label);
   els.el.classList.add('is-editing');
   els.inputEl.style.display = 'inline-block';
   els.inputEl.value = nodes[id]?.label || '';
-  els.inputEl.style.width = Math.max(50, Math.max(4, els.inputEl.value.length) * 8.5 + 16) + 'px';
+  els.inputEl.style.width = Math.max(MIN_INPUT_W, Math.max(4, els.inputEl.value.length) * CHAR_WIDTH + INPUT_PAD) + 'px';
 
   function updateUnderstroke() {
     const w = els.inputEl.value ? measureText(els.inputEl.value) : 9;
@@ -1145,12 +1194,13 @@ function confirmEdit(id) {
   }
   if (!val && n.parentId != null) {
     inputEl.style.display = 'none'; el.classList.remove('is-editing');
-    if (n._originalLabel !== undefined) { n.label = n._originalLabel; delete n._originalLabel; }
+    const orig = getOriginalLabel(id);
+    if (orig !== undefined) { n.label = orig; clearEditState(id); }
     deleteNode(id); renderAll(); return;
   }
   pushUndo();
   n.label = val;
-  if (n._originalLabel !== undefined) delete n._originalLabel;
+  clearEditState(id);
   labelEl.textContent = val || 'type here…';
   labelEl.className = 'node-label' + (!val ? ' placeholder' : '');
   el.classList.remove('is-editing');
@@ -1162,7 +1212,8 @@ function cancelEdit(id) {
   if (activeEditId === id) activeEditId = null;
   const n = nodes[id];
   if (!n) return;
-  if (n._originalLabel !== undefined) { n.label = n._originalLabel; delete n._originalLabel; }
+  const orig = getOriginalLabel(id);
+  if (orig !== undefined) { n.label = orig; clearEditState(id); }
   if (!n.label && n.parentId != null) { deleteNode(id); renderAll(); return; }
   const els = nodeEls[id];
   if (!els) return;
@@ -1176,10 +1227,10 @@ let isRendering = false;
 function renderAll() {
   if (isRendering) return;
   isRendering = true;
-  suppressBlur = true; // block stale blur events during DOM rebuild
+  suppressBlurCounter++;
   Object.keys(nodePos).forEach(k => delete nodePos[k]);
   layoutTree(); buildDOM(); saveState();
-  suppressBlur = false;
+  suppressBlurCounter--;
   isRendering = false;
 }
 
@@ -1200,7 +1251,7 @@ function saveDebounced() {
 
 canvasWrap.addEventListener('wheel', e => {
   e.preventDefault();
-  const atMin = scale <= 0.15;
+  const atMin = scale <= MIN_SCALE;
   const atMax = scale >= maxScale();
   const zoomingOut = e.deltaY > 0;
   const zoomingIn  = e.deltaY < 0;
@@ -1209,23 +1260,22 @@ canvasWrap.addEventListener('wheel', e => {
   const delta = Math.sign(e.deltaY) * Math.min(Math.abs(e.deltaY), 100);
   const rawF = 1 - delta * 0.0008;
 
-  // Ease strength near limits: t=0 at limit, t=1 far from limit
-  const minS = 0.15, maxS = maxScale();
-  const range = maxS - minS;
-  const easeZone = range * 0.20; // 20% of range = ease zone
+  const maxS = maxScale();
+  const range = maxS - MIN_SCALE;
+  const easeZone = range * 0.20;
   let ease = 1;
   if (zoomingOut) {
-    ease = Math.min(1, (scale - minS) / easeZone);
+    ease = Math.min(1, (scale - MIN_SCALE) / easeZone);
   } else {
     ease = Math.min(1, (maxS - scale) / easeZone);
   }
-  ease = ease * ease; // quadratic
+  ease = ease * ease;
   const f = 1 + (rawF - 1) * ease;
 
   const r = canvasWrap.getBoundingClientRect();
   const mx = e.clientX - r.left, my = e.clientY - r.top;
   tx = mx - (mx - tx) * f; ty = my - (my - ty) * f;
-  scale = Math.max(minS, Math.min(maxS, scale * f));
+  scale = Math.max(MIN_SCALE, Math.min(maxS, scale * f));
   updateTransform(); saveDebounced();
 }, { passive: false });
 
@@ -1245,7 +1295,7 @@ window.addEventListener('mouseup', () => {
 
 function maxScale() { return (window.innerHeight * 0.05) / NODE_H; }
 function zoomIn()    { scale = Math.min(maxScale(), scale * 1.2); updateTransform(); saveState(); }
-function zoomOut()   { scale = Math.max(0.15, scale / 1.2); updateTransform(); saveState(); }
+function zoomOut()   { scale = Math.max(MIN_SCALE, scale / 1.2); updateTransform(); saveState(); }
 function resetZoom() {
   const PAD_X = 60, PAD_Y_TOP = 60, PAD_Y_BOT = 150;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -1283,12 +1333,27 @@ function resetZoom() {
   requestAnimationFrame(animate);
 }
 
-// ─── Persistence ──────────────────────────────────────────────────────────────
+// ─── Persistence (with fallback for environments without localStorage) ────────
 const STORAGE_KEY = 'mindmap_v2';
-function saveState() {
-  if (isUndoRedo) return;
+
+function getStorage() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    // Test if localStorage is available and functional
+    const testKey = '__storage_test__';
+    localStorage.setItem(testKey, '1');
+    localStorage.removeItem(testKey);
+    return localStorage;
+  } catch (e) {
+    return null;
+  }
+}
+
+const _storage = getStorage();
+
+function saveState() {
+  if (isUndoRedo || !_storage) return;
+  try {
+    _storage.setItem(STORAGE_KEY, JSON.stringify({
       nodes: Object.values(nodes).map(n => ({
         id: n.id, label: n.label, children: [...n.children], parentId: n.parentId
       })),
@@ -1298,8 +1363,9 @@ function saveState() {
 }
 
 function loadState() {
+  if (!_storage) return false;
   try {
-    const data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const data = JSON.parse(_storage.getItem(STORAGE_KEY));
     if (!data?.nodes?.length) return false;
     data.nodes.forEach(n => { nodes[n.id] = { ...n, children: [] }; });
     data.nodes.forEach(n => {
@@ -1319,7 +1385,6 @@ function toggleHelp() {
   const overlay = document.getElementById('help-overlay');
   if (overlay.classList.contains('visible')) {
     overlay.classList.remove('visible');
-    // Hide after transition ends
     overlay.addEventListener('transitionend', () => {
       if (!overlay.classList.contains('visible')) overlay.style.display = 'none';
     }, { once: true });
@@ -1341,6 +1406,7 @@ function startOver(e) {
   Object.keys(nodes).forEach(k => delete nodes[k]);
   idCounter = 0; root = createNode(null, '');
   tx = 100; ty = 80; scale = 1;
+  clearTextCache();
   updateTransform(); renderAll();
 }
 
@@ -1352,7 +1418,6 @@ else {
   const hasContent = Object.values(nodes).some(n => n.label);
   if (hasContent) setTimeout(() => resetZoom(), 80);
 }
-updateUndoButtons();
 </script>
 
 <script>
@@ -1386,7 +1451,6 @@ function buildVectorSVG({ transparent = false } = {}) {
 
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.setAttribute('transform', `translate(${ox},${oy})`);
-  const G = 16, RO = 25;
 
   Object.values(nodes).forEach(n => {
     if (!n.children.length) return;
@@ -1396,13 +1460,13 @@ function buildVectorSVG({ transparent = false } = {}) {
     const lastPos  = nodePos[n.children[n.children.length - 1]];
     if (!firstPos || !lastPos) return;
 
-    const railX = firstPos.x - RO, stubX = pPos.x + labelW + G;
+    const railX = firstPos.x - RAIL_OFFSET, stubX = pPos.x + labelW + LINE_GAP;
     const pY = pPos.y + NODE_H/2, firstY = firstPos.y + NODE_H/2, lastY = lastPos.y + NODE_H/2;
     const railTop = Math.min(pY, firstY), railBottom = lastY;
 
     let d;
     if (n.children.length === 1 && firstY === pY) {
-      d = `M ${stubX} ${pY} H ${firstPos.x - G}`;
+      d = `M ${stubX} ${pY} H ${firstPos.x - LINE_GAP}`;
     } else {
       d = `M ${stubX} ${pY} H ${railX} V ${railBottom}`;
       if (railTop < pY) d = `M ${stubX} ${pY} H ${railX} V ${railTop} M ${railX} ${pY} V ${railBottom}`;
@@ -1420,7 +1484,7 @@ function buildVectorSVG({ transparent = false } = {}) {
       const branch = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       branch.setAttribute('stroke', textColor); branch.setAttribute('stroke-width', '1');
       branch.setAttribute('stroke-linecap', 'square'); branch.setAttribute('fill', 'none');
-      branch.setAttribute('d', `M ${railX} ${cPos.y + NODE_H/2} H ${cPos.x - G}`);
+      branch.setAttribute('d', `M ${railX} ${cPos.y + NODE_H/2} H ${cPos.x - LINE_GAP}`);
       g.appendChild(branch);
     });
   });
@@ -1451,7 +1515,13 @@ function exportSVG() {
   URL.revokeObjectURL(url);
 }
 
-const RASTER_SCALE = 9;
+function getRasterScale(W, H) {
+  // Cap scale so neither dimension exceeds MAX_RASTER_DIM
+  const maxDim = Math.max(W, H);
+  if (maxDim <= 0) return 4;
+  return Math.min(4, MAX_RASTER_DIM / maxDim);
+}
+
 function setProgress(pct, label) {
   document.getElementById('export-progress-bar').style.width = pct + '%';
   document.getElementById('export-label').textContent = label;
@@ -1466,6 +1536,8 @@ async function exportRaster(format) {
   try {
     const isPNG = format === 'png';
     const { svg, W, H, bgColor } = buildVectorSVG({ transparent: isPNG });
+    const rasterScale = getRasterScale(W, H);
+
     setProgress(15, 'loading font…');
     await new Promise(r => setTimeout(r, 30));
 
@@ -1489,17 +1561,16 @@ async function exportRaster(format) {
     let svgStr = new XMLSerializer().serializeToString(svg);
     if (fontFace) svgStr = svgStr.replace(/<svg([^>]*)>/, `<svg$1>${fontFace}`);
 
-    const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
     const svgUrl  = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
 
     setProgress(55, 'drawing canvas…');
     const img = new Image();
-    img.width  = W * RASTER_SCALE;
-    img.height = H * RASTER_SCALE;
+    img.width  = W * rasterScale;
+    img.height = H * rasterScale;
     await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = svgUrl; });
 
     const canvas = document.createElement('canvas');
-    canvas.width  = W * RASTER_SCALE; canvas.height = H * RASTER_SCALE;
+    canvas.width  = W * rasterScale; canvas.height = H * rasterScale;
     const ctx = canvas.getContext('2d');
 
     setProgress(75, 'compositing…');
